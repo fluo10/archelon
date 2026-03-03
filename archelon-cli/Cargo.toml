@@ -1,0 +1,13 @@
+[package]
+name = "archelon-cli"
+edition.workspace = true
+version.workspace = true
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+archelon-core = { path = "../archelon-core" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tempfile = "3"
