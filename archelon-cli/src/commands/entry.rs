@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use archelon_core::{
     entry::{Entry, EventMeta, Frontmatter, TaskMeta},
-    journal::{Journal, WeekStart, new_entry_path},
+    journal::{is_managed_filename, Journal, WeekStart, new_entry_path},
     parser::{read_entry, render_entry, write_entry},
 };
 use chrono::{Datelike as _, Duration, NaiveDate, NaiveDateTime};
@@ -48,6 +48,10 @@ pub enum EntryCommand {
         #[arg(long,
               conflicts_with_all = ["date_start", "date_end", "date", "today", "this_week"])]
         this_month: bool,
+
+        /// Output all matching entries as JSON (metadata + body) for AI/machine consumption
+        #[arg(long)]
+        json: bool,
     },
     /// Show the contents of an entry
     Show {
@@ -120,7 +124,7 @@ pub struct EntryFields {
 
 pub fn run(cmd: EntryCommand) -> Result<()> {
     match cmd {
-        EntryCommand::List { path, date_start, date_end, date, today, this_week, this_month } => {
+        EntryCommand::List { path, date_start, date_end, date, today, this_week, this_month, json } => {
             let week_start = if this_week {
                 Journal::find()
                     .and_then(|j| j.config())
@@ -131,7 +135,7 @@ pub fn run(cmd: EntryCommand) -> Result<()> {
             };
             let (filter_start, filter_end) =
                 resolve_date_filter(date, date_start, date_end, today, this_week, this_month, week_start);
-            list(path.as_deref(), filter_start, filter_end)
+            list(path.as_deref(), filter_start, filter_end, json)
         }
         EntryCommand::Show { entry } => show(&resolve_entry(&entry)?),
         EntryCommand::New { name, body, fields } => new(&name, body, fields),
@@ -142,60 +146,176 @@ pub fn run(cmd: EntryCommand) -> Result<()> {
 
 // ── list ──────────────────────────────────────────────────────────────────────
 
-fn list(path: Option<&Path>, date_start: Option<NaiveDate>, date_end: Option<NaiveDate>) -> Result<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MatchLabel {
+    Todo,
+    Closed,
+    Event,
+    Created,
+    Updated,
+}
+
+impl MatchLabel {
+    fn as_str(self) -> &'static str {
+        match self {
+            MatchLabel::Todo => "TODO",
+            MatchLabel::Closed => "CLOSED",
+            MatchLabel::Event => "EVENT",
+            MatchLabel::Created => "CREATED",
+            MatchLabel::Updated => "UPDATED",
+        }
+    }
+}
+
+fn list(
+    path: Option<&Path>,
+    date_start: Option<NaiveDate>,
+    date_end: Option<NaiveDate>,
+    json: bool,
+) -> Result<()> {
     let paths = collect_entries(path)?;
+    let has_filter = date_start.is_some() || date_end.is_some();
+
+    let mut filtered: Vec<(Entry, Vec<MatchLabel>)> = Vec::new();
 
     for path in &paths {
-        match read_entry(path) {
-            Ok(entry) => {
-                if (date_start.is_some() || date_end.is_some())
-                    && !matches_range(&entry, date_start, date_end)
-                {
-                    continue;
-                }
-                println!("{}\t{}", path.display(), entry.title());
-            }
-            Err(e) => eprintln!("warn: {} — {e}", path.display()),
+        if !is_managed_filename(path) {
+            continue;
         }
+        let entry = match read_entry(path) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("warn: {} — {e}", path.display());
+                continue;
+            }
+        };
+
+        let labels = if has_filter {
+            let l = compute_labels(&entry, date_start, date_end);
+            if l.is_empty() {
+                continue;
+            }
+            l
+        } else {
+            vec![]
+        };
+
+        filtered.push((entry, labels));
+    }
+
+    if json {
+        let records: Vec<serde_json::Value> = filtered
+            .iter()
+            .map(|(entry, labels)| {
+                let mut v = serde_json::json!({
+                    "id": entry.id().map(|id| id.to_string()),
+                    "path": entry.path.display().to_string(),
+                    "title": entry.title(),
+                    "slug": entry.frontmatter.slug,
+                    "created_at": entry.frontmatter.created_at,
+                    "updated_at": entry.frontmatter.updated_at,
+                    "tags": entry.frontmatter.tags,
+                    "task": entry.frontmatter.task,
+                    "event": entry.frontmatter.event,
+                    "body": entry.body,
+                });
+                if has_filter {
+                    v["match_labels"] = serde_json::json!(
+                        labels.iter().map(|l| l.as_str()).collect::<Vec<_>>()
+                    );
+                }
+                v
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&records)?);
+        return Ok(());
+    }
+
+    // Table output
+    let rows: Vec<(String, String, String)> = filtered
+        .iter()
+        .map(|(entry, labels)| {
+            let id = entry.id().map(|id| id.to_string()).unwrap_or_default();
+            let status = if has_filter {
+                labels.iter().map(|l| l.as_str()).collect::<Vec<_>>().join(",")
+            } else {
+                entry
+                    .frontmatter
+                    .task
+                    .as_ref()
+                    .and_then(|t| t.status.as_deref())
+                    .unwrap_or("")
+                    .to_owned()
+            };
+            let title = entry.title().to_owned();
+            (id, status, title)
+        })
+        .collect();
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let id_w = rows.iter().map(|(id, _, _)| id.len()).max().unwrap_or(7);
+    let status_w = rows.iter().map(|(_, s, _)| s.len()).max().unwrap_or(0);
+
+    for (id, status, title) in &rows {
+        println!("{:<id_w$}  {:<status_w$}  {title}", id, status);
     }
 
     Ok(())
 }
 
-/// Returns true if the entry is relevant for the inclusive date range [start, end].
+/// Compute the labels that explain why `entry` matches the given date range.
 ///
-/// - Active task (not done/cancelled/archived) → always shown
-/// - Task due within the range → shown
-/// - Inactive task closed (updated_at) within the range → shown
-/// - Event that overlaps with the range → shown
-fn matches_range(entry: &Entry, start: Option<NaiveDate>, end: Option<NaiveDate>) -> bool {
-    if let Some(task) = &entry.frontmatter.task {
-        let status = task.status.as_deref().unwrap_or("open");
-        let inactive = matches!(status, "done" | "cancelled" | "archived");
+/// - Active task (not done/cancelled/archived) → TODO
+/// - Inactive task with due in range → TODO
+/// - Inactive task with closed_at in range → CLOSED
+/// - Event overlapping with range → EVENT
+/// - created_at in range → CREATED
+/// - updated_at in range → UPDATED
+fn compute_labels(
+    entry: &Entry,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> Vec<MatchLabel> {
+    let mut labels = Vec::new();
 
+    if let Some(task) = &entry.frontmatter.task {
+        let inactive = matches!(
+            task.status.as_deref().unwrap_or("open"),
+            "done" | "cancelled" | "archived"
+        );
         if !inactive {
-            return true; // active task — always show
-        }
-        if task.due.is_some_and(|d| date_in_range(d.date(), start, end)) {
-            return true;
-        }
-        if task.closed_at.is_some_and(|c| date_in_range(c.date(), start, end)) {
-            return true;
+            labels.push(MatchLabel::Todo);
+        } else {
+            if task.due.is_some_and(|d| date_in_range(d.date(), start, end)) {
+                labels.push(MatchLabel::Todo);
+            }
+            if task.closed_at.is_some_and(|c| date_in_range(c.date(), start, end)) {
+                labels.push(MatchLabel::Closed);
+            }
         }
     }
 
     if let Some(event) = &entry.frontmatter.event {
         let event_start = event.start.map(|s| s.date());
         let event_end = event.end.map(|e| e.date());
-        // Overlap: event_start <= range_end  &&  event_end >= range_start
         let overlaps_end = end.map_or(true, |re| event_start.map_or(true, |es| es <= re));
         let overlaps_start = start.map_or(true, |rs| event_end.map_or(true, |ee| ee >= rs));
         if overlaps_end && overlaps_start {
-            return true;
+            labels.push(MatchLabel::Event);
         }
     }
 
-    false
+    if entry.frontmatter.created_at.is_some_and(|c| date_in_range(c.date(), start, end)) {
+        labels.push(MatchLabel::Created);
+    }
+    if entry.frontmatter.updated_at.is_some_and(|u| date_in_range(u.date(), start, end)) {
+        labels.push(MatchLabel::Updated);
+    }
+
+    labels
 }
 
 fn date_in_range(date: NaiveDate, start: Option<NaiveDate>, end: Option<NaiveDate>) -> bool {

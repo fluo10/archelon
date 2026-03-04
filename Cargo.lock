@@ -84,6 +84,7 @@ dependencies = [
  "archelon-core",
  "chrono",
  "clap",
+ "serde_json",
  "tempfile",
 ]
 
