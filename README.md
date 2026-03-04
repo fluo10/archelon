@@ -8,6 +8,21 @@ Markdown-based task and note manager that keeps your data alive as plain text �
 - **SQLite as cache** — fast querying and indexing on top of the Markdown files (planned)
 - **Bullet-journal style** — notes and tasks coexist freely in one file, no forced separation
 - **Obsidian-compatible layout** — flat directory of `.md` files with YAML frontmatter and `[[wikilinks]]`
+- **Human–AI collaborative editing** — designed to work alongside AI agents (Claude, etc.) that can read, create, and edit entries in the same journal via git or Syncthing sync
+
+## Design decisions
+
+### Entry IDs: caretta-id instead of sequential numbers
+
+Each entry filename is prefixed with a [caretta-id](https://github.com/fluo10/caretta-id) — a 7-character BASE32 identifier with decisecond precision (e.g. `123abcd_my_note.md`).
+
+Sequential IDs would collide when a human and an AI agent add entries at the same time in a shared journal synced via git or Syncthing.
+caretta-id uses the current Unix time in deciseconds as its value, so two entries created more than 0.1 seconds apart are guaranteed to have different IDs — a collision-free guarantee without any central coordinator.
+
+### File layout: `{year}/{id}_{slug}.md`
+
+Entries are grouped into year directories (e.g. `2026/`) to prevent the journal root from filling up over time, while keeping the hierarchy shallow enough to stay navigable.
+The slug derived from the entry title keeps filenames readable even without opening archelon.
 
 ## Data model
 
@@ -28,23 +43,11 @@ Some free-form notes here.
 
 ## CLI usage
 
-```bash
-# Create a new entry (opens $EDITOR if --body is omitted)
-archelon entry new <name> [--title TITLE] [--tags tag1,tag2] [--body BODY]
+See [archelon-cli/README.md](archelon-cli/README.md) for the full command reference.
 
-# List all entries in a directory
-archelon entry list [PATH]
-
-# Show an entry
-archelon entry show <file>
-
-# Open an entry in $EDITOR
-archelon entry edit <file>
-
-# Update frontmatter fields inline (no editor)
-archelon entry set <file> [--title TITLE] [--tags tag1,tag2]
-archelon entry set <file> --tags          # clear all tags
-```
+A **journal** is any directory tree that contains a `.archelon/` directory.
+`archelon` locates it by walking up from the current directory, the same way `git` finds `.git/`.
+Use `archelon init` to create one.
 
 ## Project structure
 

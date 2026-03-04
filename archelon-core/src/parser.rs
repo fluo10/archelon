@@ -53,21 +53,13 @@ fn split_frontmatter(source: &str) -> Result<(Frontmatter, &str)> {
 
 /// Serialize an [`Entry`] back to Markdown source.
 pub fn render_entry(entry: &Entry) -> String {
-    let fm = &entry.frontmatter;
-    let has_fm = fm.title.is_some() || fm.date.is_some() || !fm.tags.is_empty();
     let mut out = String::new();
 
-    if has_fm {
+    if !entry.frontmatter.is_empty() {
+        let yaml =
+            serde_yaml::to_string(&entry.frontmatter).expect("frontmatter serialization failed");
         out.push_str("---\n");
-        if let Some(ref t) = fm.title {
-            out.push_str(&format!("title: {t}\n"));
-        }
-        if let Some(ref d) = fm.date {
-            out.push_str(&format!("date: {d}\n"));
-        }
-        if !fm.tags.is_empty() {
-            out.push_str(&format!("tags: [{}]\n", fm.tags.join(", ")));
-        }
+        out.push_str(&yaml);
         out.push_str("---\n");
         if !entry.body.is_empty() {
             out.push('\n');
@@ -78,8 +70,9 @@ pub fn render_entry(entry: &Entry) -> String {
     out
 }
 
-/// Write an [`Entry`] back to its source file.
-pub fn write_entry(entry: &Entry) -> Result<()> {
+/// Write an [`Entry`] back to its source file, updating `updated_at` first.
+pub fn write_entry(entry: &mut Entry) -> Result<()> {
+    entry.frontmatter.updated_at = Some(chrono::Local::now().naive_local());
     std::fs::write(&entry.path, render_entry(entry))?;
     Ok(())
 }
@@ -115,5 +108,20 @@ mod tests {
         let src = "body\n";
         let entry = parse_entry(&PathBuf::from("my-note.md"), src).unwrap();
         assert_eq!(entry.title(), "my-note");
+    }
+
+    #[test]
+    fn renders_entry_with_task() {
+        use crate::entry::TaskMeta;
+        let mut entry = parse_entry(&dummy_path(), "body\n").unwrap();
+        entry.frontmatter.title = Some("My Task".into());
+        entry.frontmatter.task = Some(TaskMeta {
+            status: Some("open".into()),
+            due: Some("2026-03-10T00:00:00".parse().unwrap()),
+        });
+        let rendered = render_entry(&entry);
+        assert!(rendered.contains("title: My Task"));
+        assert!(rendered.contains("status: open"));
+        assert!(rendered.contains("due: 2026-03-10"));
     }
 }

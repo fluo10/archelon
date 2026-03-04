@@ -2,6 +2,7 @@ mod commands;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "archelon", about = "Markdown-based task and note manager")]
@@ -12,6 +13,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Initialize a new journal in the given directory (defaults to current directory)
+    Init {
+        /// Directory to initialize (created if it does not exist)
+        path: Option<PathBuf>,
+    },
     /// Manage entries
     Entry {
         #[command(subcommand)]
@@ -23,6 +29,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Init { path } => commands::init::run(path)?,
         Command::Entry { action } => commands::entry::run(action)?,
     }
 

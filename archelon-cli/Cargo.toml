@@ -6,8 +6,13 @@ description.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "archelon"
+path = "src/main.rs"
+
 [dependencies]
 archelon-core = { path = "../archelon-core" }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+chrono = { version = "0.4" }
 tempfile = "3"

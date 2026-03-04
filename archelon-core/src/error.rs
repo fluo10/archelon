@@ -10,6 +10,18 @@ pub enum Error {
 
     #[error("Invalid entry file: {0}")]
     InvalidEntry(String),
+
+    #[error("no .archelon directory found in current directory or any parent")]
+    JournalNotFound,
+
+    #[error("no entry found with id prefix `{0}`")]
+    EntryNotFound(String),
+
+    #[error("id prefix `{0}` is ambiguous ({1} matches)")]
+    AmbiguousId(String, usize),
+
+    #[error("invalid config: {0}")]
+    InvalidConfig(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
