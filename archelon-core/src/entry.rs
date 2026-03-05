@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Frontmatter metadata stored at the top of each .md file.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frontmatter {
+    pub id: CarettaId,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 
@@ -35,13 +37,7 @@ pub struct Frontmatter {
 
 impl Frontmatter {
     pub fn is_empty(&self) -> bool {
-        self.title.is_none()
-            && self.slug.is_none()
-            && self.created_at.is_none()
-            && self.updated_at.is_none()
-            && self.tags.is_empty()
-            && self.task.is_none()
-            && self.event.is_none()
+        false
     }
 }
 
@@ -90,11 +86,9 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Returns the CarettaId parsed from the first 7 characters of the file stem,
-    /// or `None` if the filename does not follow the `{id}_{slug}.md` convention.
-    pub fn id(&self) -> Option<CarettaId> {
-        let stem = self.path.file_stem()?.to_str()?;
-        stem.get(..7)?.parse().ok()
+    /// Returns the CarettaId from the frontmatter.
+    pub fn id(&self) -> CarettaId {
+        self.frontmatter.id
     }
 
     /// Returns the title: frontmatter title → file stem → "(untitled)".

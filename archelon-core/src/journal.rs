@@ -218,10 +218,13 @@ pub fn entry_filename(id: CarettaId, title: &str) -> String {
 ///
 /// The ID is based on the current Unix time (`CarettaId::now_unix()`), so
 /// filenames sort chronologically within a year directory.
-pub fn new_entry_path(title: &str) -> PathBuf {
+///
+/// Returns `(relative_path, id)` so the caller can embed the ID in frontmatter.
+pub fn new_entry_path(title: &str) -> (PathBuf, CarettaId) {
     let id = CarettaId::now_unix();
     let year = chrono::Local::now().year();
-    PathBuf::from(year.to_string()).join(entry_filename(id, title))
+    let path = PathBuf::from(year.to_string()).join(entry_filename(id, title));
+    (path, id)
 }
 
 #[cfg(test)]
