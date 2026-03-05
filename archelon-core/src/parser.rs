@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use caretta_id::CarettaId;
+
 use crate::{
     entry::{Entry, Frontmatter},
     error::{Error, Result},
@@ -12,7 +14,7 @@ const FENCE: &str = "---";
 /// Frontmatter is optional. If the file starts with `---`, everything until
 /// the closing `---` is parsed as YAML. The rest is the body.
 pub fn parse_entry(path: &Path, source: &str) -> Result<Entry> {
-    let (frontmatter, body) = split_frontmatter(source)?;
+    let (frontmatter, body) = split_frontmatter(path, source)?;
     Ok(Entry {
         path: path.to_path_buf(),
         frontmatter,
@@ -26,15 +28,30 @@ pub fn read_entry(path: &Path) -> Result<Entry> {
     parse_entry(path, &source)
 }
 
-fn split_frontmatter(source: &str) -> Result<(Frontmatter, &str)> {
+fn id_from_path(path: &Path) -> Option<CarettaId> {
+    let stem = path.file_stem()?.to_str()?;
+    stem.get(..7)?.parse().ok()
+}
+
+fn split_frontmatter<'a>(path: &Path, source: &'a str) -> Result<(Frontmatter, &'a str)> {
     let Some(rest) = source.strip_prefix(FENCE) else {
-        // No frontmatter — treat whole file as body.
-        return Ok((Frontmatter::default(), source));
+        // No frontmatter block — derive ID from filename.
+        let id = id_from_path(path).ok_or_else(|| {
+            Error::InvalidEntry(
+                "no frontmatter and filename does not contain a valid CarettaId".into(),
+            )
+        })?;
+        return Ok((Frontmatter { id, title: None, slug: None, created_at: None, updated_at: None, tags: Vec::new(), task: None, event: None }, source));
     };
 
     // The opening `---` must be followed by a newline.
     let Some(rest) = rest.strip_prefix('\n') else {
-        return Ok((Frontmatter::default(), source));
+        let id = id_from_path(path).ok_or_else(|| {
+            Error::InvalidEntry(
+                "no frontmatter and filename does not contain a valid CarettaId".into(),
+            )
+        })?;
+        return Ok((Frontmatter { id, title: None, slug: None, created_at: None, updated_at: None, tags: Vec::new(), task: None, event: None }, source));
     };
 
     let Some(end) = rest.find(&format!("\n{FENCE}")) else {
@@ -82,14 +99,15 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn dummy_path() -> PathBuf {
-        PathBuf::from("test.md")
+    /// A valid archelon-managed path with CarettaId "0000000" (NIL).
+    fn managed_path() -> PathBuf {
+        PathBuf::from("0000000_test.md")
     }
 
     #[test]
     fn parses_entry_with_frontmatter() {
-        let src = "---\ntitle: Hello\ntags: [rust, cli]\n---\nsome body\n";
-        let entry = parse_entry(&dummy_path(), src).unwrap();
+        let src = "---\nid: '0000000'\ntitle: Hello\ntags: [rust, cli]\n---\nsome body\n";
+        let entry = parse_entry(&managed_path(), src).unwrap();
         assert_eq!(entry.frontmatter.title.as_deref(), Some("Hello"));
         assert_eq!(entry.frontmatter.tags, vec!["rust", "cli"]);
         assert_eq!(entry.body, "some body\n");
@@ -98,7 +116,7 @@ mod tests {
     #[test]
     fn parses_entry_without_frontmatter() {
         let src = "just a body\n";
-        let entry = parse_entry(&dummy_path(), src).unwrap();
+        let entry = parse_entry(&managed_path(), src).unwrap();
         assert!(entry.frontmatter.title.is_none());
         assert_eq!(entry.body, "just a body\n");
     }
@@ -106,14 +124,15 @@ mod tests {
     #[test]
     fn title_falls_back_to_file_stem() {
         let src = "body\n";
-        let entry = parse_entry(&PathBuf::from("my-note.md"), src).unwrap();
-        assert_eq!(entry.title(), "my-note");
+        let entry = parse_entry(&PathBuf::from("0000000_my-note.md"), src).unwrap();
+        assert_eq!(entry.title(), "0000000_my-note");
     }
 
     #[test]
     fn renders_entry_with_task() {
         use crate::entry::TaskMeta;
-        let mut entry = parse_entry(&dummy_path(), "body\n").unwrap();
+        let src = "---\nid: '0000000'\n---\nbody\n";
+        let mut entry = parse_entry(&managed_path(), src).unwrap();
         entry.frontmatter.title = Some("My Task".into());
         entry.frontmatter.task = Some(TaskMeta {
             status: Some("open".into()),

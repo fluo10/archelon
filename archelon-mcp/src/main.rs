@@ -267,7 +267,7 @@ impl ArchelonServer {
                 .iter()
                 .map(|(entry, labels)| {
                     let mut v = serde_json::json!({
-                        "id": entry.id().map(|id| id.to_string()),
+                        "id": entry.id().to_string(),
                         "path": entry.path.display().to_string(),
                         "title": entry.title(),
                         "slug": entry.frontmatter.slug,

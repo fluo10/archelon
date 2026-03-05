@@ -7,13 +7,13 @@
 use std::path::{Path, PathBuf};
 
 use caretta_id::CarettaId;
-use chrono::NaiveDateTime;
+use chrono::{Datelike as _, NaiveDateTime};
 
 use crate::{
     entry::{Entry, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
-    journal::{is_managed_filename, Journal, new_entry_path, slugify},
+    journal::{entry_filename, is_managed_filename, Journal, slugify},
     parser::{read_entry, render_entry, write_entry},
     period::Period,
 };
@@ -243,7 +243,9 @@ pub fn create_entry(
     body: String,
     fields: EntryFields,
 ) -> Result<PathBuf> {
-    let dest = journal.root.join(new_entry_path(name));
+    let id = CarettaId::now_unix();
+    let year = chrono::Local::now().year();
+    let dest = journal.root.join(year.to_string()).join(entry_filename(id, name));
     if dest.exists() {
         return Err(Error::EntryAlreadyExists(dest.display().to_string()));
     }
@@ -275,6 +277,7 @@ pub fn create_entry(
     let entry = Entry {
         path: dest.clone(),
         frontmatter: Frontmatter {
+            id,
             title: fm_title,
             slug: fields.slug,
             tags,
@@ -400,10 +403,7 @@ pub fn check_entry(path: &Path) -> Result<Vec<CheckIssue>> {
     }
 
     let entry = read_entry(path)?;
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-    // Safety: `is_managed_filename` guarantees a valid 7-char CarettaId prefix.
-    let id: CarettaId = stem[..7].parse().unwrap();
-    let expected = entry_filename_from_frontmatter(id, &entry.frontmatter);
+    let expected = entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
     let actual = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
 
     let mut issues = Vec::new();
@@ -428,10 +428,7 @@ pub fn fix_entry(path: &Path) -> Result<Option<PathBuf>> {
     }
 
     let entry = read_entry(path)?;
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-    let id: CarettaId = stem[..7].parse().unwrap();
-
-    let expected = entry_filename_from_frontmatter(id, &entry.frontmatter);
+    let expected = entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
     let actual = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
 
     if actual == expected {

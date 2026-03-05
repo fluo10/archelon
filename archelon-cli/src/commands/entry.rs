@@ -215,7 +215,7 @@ fn print_entries(
             .iter()
             .map(|(entry, labels)| {
                 let mut v = serde_json::json!({
-                    "id": entry.id().map(|id| id.to_string()),
+                    "id": entry.id().to_string(),
                     "path": entry.path.display().to_string(),
                     "title": entry.title(),
                     "slug": entry.frontmatter.slug,
@@ -241,7 +241,7 @@ fn print_entries(
     let rows: Vec<(String, String, String)> = entries
         .iter()
         .map(|(entry, labels)| {
-            let id = entry.id().map(|id| id.to_string()).unwrap_or_default();
+            let id = entry.id().to_string();
             let status = if has_filter && !labels.is_empty() {
                 labels.iter().map(|l| l.as_str()).collect::<Vec<_>>().join(",")
             } else {
