@@ -361,8 +361,11 @@ fn set(journal_dir: Option<&Path>, path: &Path, fields: EntryFields) -> Result<(
         bail!("nothing to update — specify at least one field");
     }
     let _ = journal_dir; // reserved for future use
-    ops::update_entry(path, fields.into())?;
-    println!("updated: {}", path.display());
+    if let Some(new_path) = ops::update_entry(path, fields.into())? {
+        println!("updated and renamed: {}", new_path.display());
+    } else {
+        println!("updated: {}", path.display());
+    }
     Ok(())
 }
 

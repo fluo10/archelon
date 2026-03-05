@@ -13,7 +13,7 @@ use crate::{
     entry::{Entry, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
-    journal::{entry_filename, is_managed_filename, Journal, slugify},
+    journal::{is_managed_filename, Journal, slugify},
     parser::{read_entry, render_entry, write_entry},
     period::Period,
 };
@@ -245,10 +245,6 @@ pub fn create_entry(
 ) -> Result<PathBuf> {
     let id = CarettaId::now_unix();
     let year = chrono::Local::now().year();
-    let dest = journal.root.join(year.to_string()).join(entry_filename(id, name));
-    if dest.exists() {
-        return Err(Error::EntryAlreadyExists(dest.display().to_string()));
-    }
 
     let fm_title = fields.title.or_else(|| Some(name.to_owned()));
     let tags = fields.tags.unwrap_or_default();
@@ -274,20 +270,25 @@ pub fn create_entry(
     };
 
     let now = chrono::Local::now().naive_local();
-    let entry = Entry {
-        path: dest.clone(),
-        frontmatter: Frontmatter {
-            id,
-            title: fm_title,
-            slug: fields.slug,
-            tags,
-            created_at: Some(now),
-            updated_at: Some(now),
-            task,
-            event,
-        },
-        body,
+    let frontmatter = Frontmatter {
+        id,
+        title: fm_title,
+        slug: fields.slug,
+        tags,
+        created_at: Some(now),
+        updated_at: Some(now),
+        task,
+        event,
     };
+
+    let dest = journal.root
+        .join(year.to_string())
+        .join(entry_filename_from_frontmatter(id, &frontmatter));
+    if dest.exists() {
+        return Err(Error::EntryAlreadyExists(dest.display().to_string()));
+    }
+
+    let entry = Entry { path: dest.clone(), frontmatter, body };
 
     std::fs::create_dir_all(dest.parent().unwrap())?;
     std::fs::write(&dest, render_entry(&entry))?;
@@ -299,7 +300,9 @@ pub fn create_entry(
 /// Update the frontmatter of the entry at `path` with non-`None` fields.
 ///
 /// `updated_at` is refreshed automatically by [`write_entry`].
-pub fn update_entry(path: &Path, fields: EntryFields) -> Result<()> {
+/// If the title or slug changed, the file is also renamed to match the new
+/// canonical filename.  Returns `Some(new_path)` when renamed, `None` otherwise.
+pub fn update_entry(path: &Path, fields: EntryFields) -> Result<Option<PathBuf>> {
     let mut entry = read_entry(path)?;
 
     if let Some(t) = fields.title {
@@ -343,7 +346,7 @@ pub fn update_entry(path: &Path, fields: EntryFields) -> Result<()> {
     }
 
     write_entry(&mut entry)?;
-    Ok(())
+    fix_entry(path)
 }
 
 // ── EntryRef resolution ───────────────────────────────────────────────────────
