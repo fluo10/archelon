@@ -122,12 +122,12 @@ pub struct EntryFields {
     pub event_end: Option<NaiveDateTime>,
 }
 
-pub fn run(cmd: EntryCommand) -> Result<()> {
+pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
     match cmd {
         EntryCommand::List { path, date_start, date_end, date, today, this_week, this_month, json } => {
             let week_start = if this_week {
-                Journal::find()
-                    .and_then(|j| j.config())
+                open_journal(journal_dir)
+                    .and_then(|j| Ok(j.config()?))
                     .map(|c| c.journal.week_start)
                     .unwrap_or_default()
             } else {
@@ -135,12 +135,21 @@ pub fn run(cmd: EntryCommand) -> Result<()> {
             };
             let (filter_start, filter_end) =
                 resolve_date_filter(date, date_start, date_end, today, this_week, this_month, week_start);
-            list(path.as_deref(), filter_start, filter_end, json)
+            list(journal_dir, path.as_deref(), filter_start, filter_end, json)
         }
-        EntryCommand::Show { entry } => show(&resolve_entry(&entry)?),
-        EntryCommand::New { name, body, fields } => new(&name, body, fields),
-        EntryCommand::Edit { entry } => edit(&resolve_entry(&entry)?),
-        EntryCommand::Set { entry, fields } => set(&resolve_entry(&entry)?, fields),
+        EntryCommand::Show { entry } => show(&resolve_entry(journal_dir, &entry)?),
+        EntryCommand::New { name, body, fields } => new(journal_dir, &name, body, fields),
+        EntryCommand::Edit { entry } => edit(&resolve_entry(journal_dir, &entry)?),
+        EntryCommand::Set { entry, fields } => set(&resolve_entry(journal_dir, &entry)?, fields),
+    }
+}
+
+fn open_journal(journal_dir: Option<&Path>) -> Result<Journal> {
+    match journal_dir {
+        Some(dir) => Journal::from_root(dir.to_path_buf())
+            .context("not an archelon journal — run `archelon init` to initialize one"),
+        None => Journal::find()
+            .context("not in an archelon journal — run `archelon init` to initialize one"),
     }
 }
 
@@ -168,12 +177,13 @@ impl MatchLabel {
 }
 
 fn list(
+    journal_dir: Option<&Path>,
     path: Option<&Path>,
     date_start: Option<NaiveDate>,
     date_end: Option<NaiveDate>,
     json: bool,
 ) -> Result<()> {
-    let paths = collect_entries(path)?;
+    let paths = collect_entries(journal_dir, path)?;
     let has_filter = date_start.is_some() || date_end.is_some();
 
     let mut filtered: Vec<(Entry, Vec<MatchLabel>)> = Vec::new();
@@ -368,11 +378,10 @@ fn show(path: &Path) -> Result<()> {
 
 // ── new ───────────────────────────────────────────────────────────────────────
 
-fn new(name: &str, body: Option<String>, fields: EntryFields) -> Result<()> {
+fn new(journal_dir: Option<&Path>, name: &str, body: Option<String>, fields: EntryFields) -> Result<()> {
     let fm_title = fields.title.or_else(|| Some(name.to_owned()));
     let tags = fields.tags.unwrap_or_default();
-    let journal = Journal::find()
-        .context("not in an archelon journal — run `archelon init` to initialize one")?;
+    let journal = open_journal(journal_dir)?;
     let dest = journal.root.join(new_entry_path(name));
 
     if dest.exists() {
@@ -546,14 +555,13 @@ fn parse_datetime_end(s: &str) -> std::result::Result<NaiveDateTime, String> {
 /// Resolution order:
 /// 1. If the argument is an existing file path, return it as-is.
 /// 2. Otherwise treat it as an ID prefix and search the current journal.
-fn resolve_entry(entry: &str) -> Result<PathBuf> {
+fn resolve_entry(journal_dir: Option<&Path>, entry: &str) -> Result<PathBuf> {
     let p = Path::new(entry);
     if p.exists() {
         return Ok(p.to_path_buf());
     }
 
-    let journal = Journal::find()
-        .context("not in an archelon journal — run `archelon init` to initialize one")?;
+    let journal = open_journal(journal_dir)?;
     journal.find_entry_by_id(entry).map_err(Into::into)
 }
 
@@ -601,7 +609,7 @@ fn resolve_date_filter(
 /// Collect `.md` files for the list command.
 /// If path is given, scan only that directory.
 /// Otherwise, use journal root + year subdirs; fall back to ".".
-fn collect_entries(path: Option<&Path>) -> Result<Vec<PathBuf>> {
+fn collect_entries(journal_dir: Option<&Path>, path: Option<&Path>) -> Result<Vec<PathBuf>> {
     if let Some(v) = path {
         let mut paths: Vec<_> = std::fs::read_dir(v)?
             .filter_map(|e| e.ok())
@@ -610,6 +618,13 @@ fn collect_entries(path: Option<&Path>) -> Result<Vec<PathBuf>> {
             .collect();
         paths.sort();
         return Ok(paths);
+    }
+
+    if let Some(dir) = journal_dir {
+        return Journal::from_root(dir.to_path_buf())
+            .context("not an archelon journal")?
+            .collect_entries()
+            .map_err(Into::into);
     }
 
     if let Ok(journal) = Journal::find() {

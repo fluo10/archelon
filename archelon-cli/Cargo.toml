@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 archelon-core = { path = "../archelon-core" }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 chrono = { version = "0.4" }
 tempfile = "3"

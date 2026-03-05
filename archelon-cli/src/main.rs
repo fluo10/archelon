@@ -7,6 +7,12 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "archelon", about = "Markdown-based task and note manager")]
 struct Cli {
+    /// Path to the journal root (the directory containing `.archelon/`).
+    /// Overrides the automatic upward search from the current directory.
+    /// Can also be set via the ARCHELON_JOURNAL_DIR environment variable.
+    #[arg(long, env = "ARCHELON_JOURNAL_DIR", global = true, value_name = "DIR")]
+    journal_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -30,7 +36,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Init { path } => commands::init::run(path)?,
-        Command::Entry { action } => commands::entry::run(action)?,
+        Command::Entry { action } => commands::entry::run(cli.journal_dir.as_deref(), action)?,
     }
 
     Ok(())

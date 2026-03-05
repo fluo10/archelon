@@ -16,6 +16,17 @@ pub struct Journal {
 }
 
 impl Journal {
+    /// Create a `Journal` from an explicit root path.
+    ///
+    /// Returns `Err(Error::JournalNotFound)` if `root` does not contain a `.archelon` directory.
+    pub fn from_root(root: PathBuf) -> Result<Self> {
+        if root.join(ARCHELON_DIR).is_dir() {
+            Ok(Journal { root })
+        } else {
+            Err(Error::JournalNotFound)
+        }
+    }
+
     /// Walk up from `start` until a directory containing `.archelon/` is found.
     ///
     /// Returns `Err(Error::JournalNotFound)` if no such directory exists.

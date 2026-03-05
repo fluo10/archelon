@@ -118,6 +118,7 @@ mod tests {
         entry.frontmatter.task = Some(TaskMeta {
             status: Some("open".into()),
             due: Some("2026-03-10T00:00:00".parse().unwrap()),
+            closed_at: None,
         });
         let rendered = render_entry(&entry);
         assert!(rendered.contains("title: My Task"));
