@@ -380,8 +380,12 @@ impl ArchelonServer {
                 p.event_start.as_deref(),
                 p.event_end.as_deref(),
             )?;
-            ops::update_entry(&path, fields)?;
-            Ok(format!("updated: {}", path.display()))
+            let msg = if let Some(new_path) = ops::update_entry(&path, fields)? {
+                format!("updated and renamed: {}", new_path.display())
+            } else {
+                format!("updated: {}", path.display())
+            };
+            Ok(msg)
         })()
         .map_err(|e| e.to_string())
     }
