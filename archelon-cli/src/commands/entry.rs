@@ -273,7 +273,7 @@ fn print_entries(
                     .frontmatter
                     .task
                     .as_ref()
-                    .and_then(|t| t.status.as_deref())
+                    .map(|t| t.status.as_str())
                     .unwrap_or("")
                     .to_owned()
             };
@@ -308,7 +308,7 @@ fn show(path: &Path) -> Result<()> {
         println!("tags:     {}", fm.tags.join(", "));
     }
     if let Some(task) = &fm.task {
-        let status = task.status.as_deref().unwrap_or("open");
+        let status = task.status.as_str();
         match task.due {
             Some(d) => println!("task:     {status} (due {})", d.format("%Y-%m-%d")),
             None => println!("task:     {status}"),
@@ -318,12 +318,7 @@ fn show(path: &Path) -> Result<()> {
         }
     }
     if let Some(event) = &fm.event {
-        match (event.start, event.end) {
-            (Some(s), Some(e)) => println!("event:    {} – {}", s.format("%Y-%m-%d"), e.format("%Y-%m-%d")),
-            (Some(s), None)    => println!("event:    from {}", s.format("%Y-%m-%d")),
-            (None, Some(e))    => println!("event:    until {}", e.format("%Y-%m-%d")),
-            (None, None)       => println!("event:    (no dates)"),
-        }
+        println!("event:    {} – {}", event.start.format("%Y-%m-%d"), event.end.format("%Y-%m-%d"));
     }
     println!();
     print!("{}", entry.body);

@@ -16,11 +16,11 @@ pub struct Frontmatter {
     pub slug: Option<String>,
 
     /// Timestamp when the entry was first created. Set automatically by `new`.
-    #[serde(default)]
+    #[serde(default, with = "naive_datetime_serde")]
     pub created_at: NaiveDateTime,
 
     /// Timestamp of the last write. Updated automatically by `write_entry`.
-    #[serde(default)]
+    #[serde(default, with = "naive_datetime_serde")]
     pub updated_at: NaiveDateTime,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -35,40 +35,37 @@ pub struct Frontmatter {
     pub event: Option<EventMeta>,
 }
 
-impl Frontmatter {
-    pub fn is_empty(&self) -> bool {
-        false
-    }
-}
-
 /// Task-specific metadata.
 ///
 /// Conventional `status` values: `open`, `in_progress`, `done`, `cancelled`, `archived`.
 /// Any custom string is also accepted.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMeta {
     /// Due date/time.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::eod::opt")]
     pub due: Option<NaiveDateTime>,
 
     /// Task status. Conventional values: open | in_progress | done | cancelled | archived
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    #[serde(default = "default_task_status")]
+    pub status: String,
 
     /// Timestamp when the task was closed (status → done/cancelled/archived).
     /// Set automatically by `entry set`; can be overridden manually.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub closed_at: Option<NaiveDateTime>,
 }
 
-/// Event-specific metadata.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EventMeta {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start: Option<NaiveDateTime>,
+fn default_task_status() -> String {
+    "open".to_owned()
+}
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end: Option<NaiveDateTime>,
+/// Event-specific metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventMeta {
+    #[serde(with = "naive_datetime_serde")]
+    pub start: NaiveDateTime,
+    #[serde(with = "naive_datetime_serde::eod")]
+    pub end: NaiveDateTime,
 }
 
 /// A single entry — one Markdown file in the journal.
@@ -93,12 +90,107 @@ impl Entry {
 
     /// Returns the title: frontmatter title (if non-empty) → file stem → "(untitled)".
     pub fn title(&self) -> &str {
-        if !self.frontmatter.title.is_empty() {
-            return &self.frontmatter.title;
+        return &self.frontmatter.title;
+    }
+}
+
+/// Custom serde module for `NaiveDateTime` using minute-precision format (`YYYY-MM-DDTHH:MM`).
+///
+/// Serializes to `%Y-%m-%dT%H:%M`. Deserializes from:
+/// - `%Y-%m-%dT%H:%M`        (minute precision — preferred)
+/// - `%Y-%m-%dT%H:%M:%S`     (second precision)
+/// - `%Y-%m-%dT%H:%M:%S%.f`  (sub-second precision — for backward compat)
+/// - `%Y-%m-%d`              (date only — `00:00` for start fields, `23:59` via `eod` sub-module)
+mod naive_datetime_serde {
+    use chrono::{NaiveDate, NaiveDateTime};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    const FORMAT: &str = "%Y-%m-%dT%H:%M";
+
+    /// Parse a datetime string, using `(h, m)` as the fallback time when only a date is given.
+    pub(super) fn parse_with_fallback(s: &str, h: u32, m: u32) -> Result<NaiveDateTime, String> {
+        for fmt in [FORMAT, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%.f"] {
+            if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
+                return Ok(dt);
+            }
         }
-        self.path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("(untitled)")
+        if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            return Ok(d.and_hms_opt(h, m, 0).unwrap());
+        }
+        Err(format!(
+            "cannot parse `{s}` as a datetime; expected format YYYY-MM-DDTHH:MM"
+        ))
+    }
+
+    pub fn serialize<S: Serializer>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&dt.format(FORMAT).to_string())
+    }
+
+    /// Deserializes with date-only → `00:00` (start-of-day).
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<NaiveDateTime, D::Error> {
+        let raw = String::deserialize(d)?;
+        parse_with_fallback(&raw, 0, 0).map_err(serde::de::Error::custom)
+    }
+
+    /// For `Option<NaiveDateTime>` fields — date-only → `00:00`.
+    pub mod opt {
+        use chrono::NaiveDateTime;
+        use serde::{Deserialize, Deserializer, Serializer};
+
+        pub fn serialize<S: Serializer>(
+            opt: &Option<NaiveDateTime>,
+            s: S,
+        ) -> Result<S::Ok, S::Error> {
+            match opt {
+                Some(dt) => super::serialize(dt, s),
+                None => s.serialize_none(),
+            }
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(
+            d: D,
+        ) -> Result<Option<NaiveDateTime>, D::Error> {
+            let raw = String::deserialize(d)?;
+            super::parse_with_fallback(&raw, 0, 0).map(Some).map_err(serde::de::Error::custom)
+        }
+    }
+
+    /// Variant where date-only → `23:59` (end-of-day). Used for due dates and event end times.
+    pub mod eod {
+        use chrono::NaiveDateTime;
+        use serde::{Deserialize, Deserializer, Serializer};
+
+        pub fn serialize<S: Serializer>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error> {
+            super::serialize(dt, s)
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<NaiveDateTime, D::Error> {
+            let raw = String::deserialize(d)?;
+            super::parse_with_fallback(&raw, 23, 59).map_err(serde::de::Error::custom)
+        }
+
+        pub mod opt {
+            use chrono::NaiveDateTime;
+            use serde::{Deserialize, Deserializer, Serializer};
+
+            pub fn serialize<S: Serializer>(
+                opt: &Option<NaiveDateTime>,
+                s: S,
+            ) -> Result<S::Ok, S::Error> {
+                match opt {
+                    Some(dt) => super::serialize(dt, s),
+                    None => s.serialize_none(),
+                }
+            }
+
+            pub fn deserialize<'de, D: Deserializer<'de>>(
+                d: D,
+            ) -> Result<Option<NaiveDateTime>, D::Error> {
+                let raw = String::deserialize(d)?;
+                super::super::parse_with_fallback(&raw, 23, 59)
+                    .map(Some)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
     }
 }

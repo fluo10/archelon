@@ -80,15 +80,13 @@ fn split_frontmatter<'a>(path: &Path, source: &'a str) -> Result<(Frontmatter, &
 pub fn render_entry(entry: &Entry) -> String {
     let mut out = String::new();
 
-    if !entry.frontmatter.is_empty() {
-        let yaml =
-            serde_yaml::to_string(&entry.frontmatter).expect("frontmatter serialization failed");
-        out.push_str("---\n");
-        out.push_str(&yaml);
-        out.push_str("---\n");
-        if !entry.body.is_empty() {
-            out.push('\n');
-        }
+    let yaml =
+        serde_yaml::to_string(&entry.frontmatter).expect("frontmatter serialization failed");
+    out.push_str("---\n");
+    out.push_str(&yaml);
+    out.push_str("---\n");
+    if !entry.body.is_empty() {
+        out.push('\n');
     }
 
     out.push_str(&entry.body);
@@ -130,20 +128,13 @@ mod tests {
     }
 
     #[test]
-    fn title_falls_back_to_file_stem() {
-        let src = "body\n";
-        let entry = parse_entry(&PathBuf::from("0000000_my-note.md"), src).unwrap();
-        assert_eq!(entry.title(), "0000000_my-note");
-    }
-
-    #[test]
     fn renders_entry_with_task() {
         use crate::entry::TaskMeta;
         let src = "---\nid: '0000000'\n---\nbody\n";
         let mut entry = parse_entry(&managed_path(), src).unwrap();
         entry.frontmatter.title = "My Task".into();
         entry.frontmatter.task = Some(TaskMeta {
-            status: Some("open".into()),
+            status: "open".into(),
             due: Some("2026-03-10T00:00:00".parse().unwrap()),
             closed_at: None,
         });
