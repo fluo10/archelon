@@ -328,7 +328,7 @@ impl ArchelonServer {
                 out.push_str(&format!("tags:     {}\n", fm.tags.join(", ")));
             }
             if let Some(task) = &fm.task {
-                let status = task.status.as_deref().unwrap_or("open");
+                let status = task.status.as_str();
                 match task.due {
                     Some(d) => out.push_str(&format!("task:     {status} (due {})\n", d.format("%Y-%m-%d"))),
                     None    => out.push_str(&format!("task:     {status}\n")),
@@ -338,12 +338,7 @@ impl ArchelonServer {
                 }
             }
             if let Some(event) = &fm.event {
-                match (event.start, event.end) {
-                    (Some(s), Some(e)) => out.push_str(&format!("event:    {} – {}\n", s.format("%Y-%m-%d"), e.format("%Y-%m-%d"))),
-                    (Some(s), None)    => out.push_str(&format!("event:    from {}\n", s.format("%Y-%m-%d"))),
-                    (None, Some(e))    => out.push_str(&format!("event:    until {}\n", e.format("%Y-%m-%d"))),
-                    (None, None)       => out.push_str("event:    (no dates)\n"),
-                }
+                out.push_str(&format!("event:    {} – {}\n", event.start.format("%Y-%m-%d"), event.end.format("%Y-%m-%d")));
             }
             out.push('\n');
             out.push_str(&entry.body);

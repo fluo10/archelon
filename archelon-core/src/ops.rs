@@ -127,8 +127,8 @@ impl EntryFilter {
 
         let timestamp_ok = if self.has_timestamp_filter() {
             let task_due_val = entry.frontmatter.task.as_ref().and_then(|t| t.due);
-            let event_start_val = entry.frontmatter.event.as_ref().and_then(|e| e.start);
-            let event_end_val = entry.frontmatter.event.as_ref().and_then(|e| e.end);
+            let event_start_val = entry.frontmatter.event.as_ref().map(|e| e.start);
+            let event_end_val = entry.frontmatter.event.as_ref().map(|e| e.end);
             let created_val = Some(entry.frontmatter.created_at);
             let updated_val = Some(entry.frontmatter.updated_at);
 
@@ -177,7 +177,7 @@ impl EntryFilter {
 
         let status_ok = if !self.task_status.is_empty() {
             entry.frontmatter.task.as_ref().is_some_and(|t| {
-                let s = t.status.as_deref().unwrap_or("open");
+                let s = t.status.as_str();
                 self.task_status.iter().any(|ts| ts == s)
             })
         } else {
@@ -272,8 +272,8 @@ fn sort_cmp(a: &Entry, b: &Entry, field: SortField) -> Ordering {
         SortField::Id => a.id().cmp(&b.id()),
         SortField::Title => a.title().cmp(b.title()),
         SortField::TaskStatus => {
-            let sa = a.frontmatter.task.as_ref().and_then(|t| t.status.as_deref()).unwrap_or("");
-            let sb = b.frontmatter.task.as_ref().and_then(|t| t.status.as_deref()).unwrap_or("");
+            let sa = a.frontmatter.task.as_ref().map(|t| t.status.as_str()).unwrap_or("");
+            let sb = b.frontmatter.task.as_ref().map(|t| t.status.as_str()).unwrap_or("");
             sa.cmp(sb)
         }
         SortField::CreatedAt  => a.frontmatter.created_at.cmp(&b.frontmatter.created_at),
@@ -283,12 +283,12 @@ fn sort_cmp(a: &Entry, b: &Entry, field: SortField) -> Ordering {
             b.frontmatter.task.as_ref().and_then(|t| t.due),
         ),
         SortField::EventStart => cmp_opt(
-            a.frontmatter.event.as_ref().and_then(|e| e.start),
-            b.frontmatter.event.as_ref().and_then(|e| e.start),
+            a.frontmatter.event.as_ref().map(|e| e.start),
+            b.frontmatter.event.as_ref().map(|e| e.start),
         ),
         SortField::EventEnd   => cmp_opt(
-            a.frontmatter.event.as_ref().and_then(|e| e.end),
-            b.frontmatter.event.as_ref().and_then(|e| e.end),
+            a.frontmatter.event.as_ref().map(|e| e.end),
+            b.frontmatter.event.as_ref().map(|e| e.end),
         ),
     }
 }
@@ -382,13 +382,15 @@ pub fn create_entry(
         let closed_at = fields
             .task_closed_at
             .or_else(|| inactive.then(|| chrono::Local::now().naive_local()));
-        Some(TaskMeta { due: fields.task_due, status: fields.task_status, closed_at })
+        Some(TaskMeta { due: fields.task_due, status: fields.task_status.unwrap_or_else(|| "open".to_owned()), closed_at })
     } else {
         None
     };
 
     let event = if fields.event_start.is_some() || fields.event_end.is_some() {
-        Some(EventMeta { start: fields.event_start, end: fields.event_end })
+        let start = fields.event_start.or(fields.event_end).unwrap();
+        let end = fields.event_end.or(fields.event_start).unwrap();
+        Some(EventMeta { start, end })
     } else {
         None
     };
@@ -446,13 +448,17 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
         || fields.task_status.is_some()
         || fields.task_closed_at.is_some()
     {
-        let task = entry.frontmatter.task.get_or_insert_with(Default::default);
+        let task = entry.frontmatter.task.get_or_insert_with(|| TaskMeta {
+            status: "open".to_owned(),
+            due: None,
+            closed_at: None,
+        });
         if let Some(d) = fields.task_due {
             task.due = Some(d);
         }
         if let Some(s) = fields.task_status {
             let inactive = matches!(s.as_str(), "done" | "cancelled" | "archived");
-            task.status = Some(s);
+            task.status = s;
             if inactive && task.closed_at.is_none() && fields.task_closed_at.is_none() {
                 task.closed_at = Some(chrono::Local::now().naive_local());
             }
@@ -463,12 +469,16 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
     }
 
     if fields.event_start.is_some() || fields.event_end.is_some() {
-        let event = entry.frontmatter.event.get_or_insert_with(Default::default);
+        let event = entry.frontmatter.event.get_or_insert_with(|| {
+            let start = fields.event_start.or(fields.event_end).unwrap();
+            let end = fields.event_end.or(fields.event_start).unwrap();
+            EventMeta { start, end }
+        });
         if let Some(s) = fields.event_start {
-            event.start = Some(s);
+            event.start = s;
         }
         if let Some(e) = fields.event_end {
-            event.end = Some(e);
+            event.end = e;
         }
     }
 
