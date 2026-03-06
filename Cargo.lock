@@ -78,7 +78,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "archelon-cli"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "archelon-core",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "archelon-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "caretta-id",
  "chrono",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "archelon-mcp"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "archelon-core",
@@ -157,9 +157,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "caretta-id"
-version = "0.11.0-rc.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f8e4df8febef6886eeb1b8c286bd09de28568452f09b2a3ab480e9a1ad3896"
+checksum = "4d72cffb14d20e2088f57390128dfc83512970b20400d2076312b6166411b901"
 dependencies = [
  "prost-build",
  "rand",
