@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-caretta-id = { version = "0.11.0-rc.2", features = ["serde"] }
+caretta-id = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 toml = "0.8"
