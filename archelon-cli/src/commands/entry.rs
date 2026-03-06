@@ -213,10 +213,12 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
         EntryCommand::Show { entry } => show(&resolve_entry(journal_dir, &entry)?),
         EntryCommand::New { title, fields } => new(journal_dir, title, fields),
         EntryCommand::Edit { entry, new } => {
-            if new || entry.is_none() {
+            if new {
                 edit_new(journal_dir)
+            } else if let Some(e) = entry {
+                edit(&resolve_entry(journal_dir, &e)?)
             } else {
-                edit(&resolve_entry(journal_dir, entry.as_deref().unwrap())?)
+                bail!("specify an entry or use --new to create one")
             }
         }
         EntryCommand::Set { entry, title, fields } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, title, fields),
