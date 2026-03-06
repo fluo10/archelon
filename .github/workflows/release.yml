@@ -38,14 +38,29 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            package: archelon-cli
             binary: archelon
-            asset_name: archelon-linux-x86_64
+            asset_name: archelon-cli-linux-x86_64
           - os: macos-latest
+            package: archelon-cli
             binary: archelon
-            asset_name: archelon-macos-aarch64
+            asset_name: archelon-cli-macos-aarch64
           - os: windows-latest
+            package: archelon-cli
             binary: archelon.exe
-            asset_name: archelon-windows-x86_64.exe
+            asset_name: archelon-cli-windows-x86_64.exe
+          - os: ubuntu-latest
+            package: archelon-mcp
+            binary: archelon-mcp
+            asset_name: archelon-mcp-linux-x86_64
+          - os: macos-latest
+            package: archelon-mcp
+            binary: archelon-mcp
+            asset_name: archelon-mcp-macos-aarch64
+          - os: windows-latest
+            package: archelon-mcp
+            binary: archelon-mcp.exe
+            asset_name: archelon-mcp-windows-x86_64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +68,7 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release -p archelon-cli
+      - run: cargo build --release -p ${{ matrix.package }}
 
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'
