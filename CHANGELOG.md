@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-03-07
+
+### Fixed
+
+- `TaskMeta.due` and `TaskMeta.closed_at`: add `#[serde(default)]` to prevent "missing field" errors when these optional fields are absent from the YAML frontmatter
+
 ## [0.1.0] - 2026-03-07
 
 ### Added
