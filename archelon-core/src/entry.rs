@@ -1,5 +1,6 @@
 use caretta_id::CarettaId;
 use chrono::NaiveDateTime;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -33,6 +34,10 @@ pub struct Frontmatter {
     /// Event metadata. Present only when this entry represents a calendar event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event: Option<EventMeta>,
+
+    /// Unknown frontmatter fields preserved for round-trip compatibility.
+    #[serde(flatten)]
+    pub extra: IndexMap<String, serde_yaml::Value>,
 }
 
 /// Task-specific metadata.
@@ -58,6 +63,10 @@ pub struct TaskMeta {
     /// Set automatically by `entry set`; can be overridden manually.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub closed_at: Option<NaiveDateTime>,
+
+    /// Unknown task fields preserved for round-trip compatibility.
+    #[serde(flatten)]
+    pub extra: IndexMap<String, serde_yaml::Value>,
 }
 
 fn default_task_status() -> String {
@@ -71,6 +80,10 @@ pub struct EventMeta {
     pub start: NaiveDateTime,
     #[serde(with = "naive_datetime_serde::eod")]
     pub end: NaiveDateTime,
+
+    /// Unknown event fields preserved for round-trip compatibility.
+    #[serde(flatten)]
+    pub extra: IndexMap<String, serde_yaml::Value>,
 }
 
 /// A single entry — one Markdown file in the journal.

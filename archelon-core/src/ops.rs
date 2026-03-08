@@ -6,6 +6,8 @@
 
 use std::{cmp::Ordering, path::{Path, PathBuf}, str::FromStr};
 
+use indexmap::IndexMap;
+
 use caretta_id::CarettaId;
 use chrono::{Datelike as _, NaiveDateTime};
 
@@ -413,7 +415,7 @@ pub fn create_entry(
         let closed_at = fields
             .task_closed_at
             .or_else(|| inactive.then(|| chrono::Local::now().naive_local()));
-        Some(TaskMeta { due: fields.task_due, status, started_at, closed_at })
+        Some(TaskMeta { due: fields.task_due, status, started_at, closed_at, extra: IndexMap::new() })
     } else {
         None
     };
@@ -421,7 +423,7 @@ pub fn create_entry(
     let event = if fields.event_start.is_some() || fields.event_end.is_some() {
         let start = fields.event_start.or(fields.event_end).unwrap();
         let end = fields.event_end.or(fields.event_start).unwrap();
-        Some(EventMeta { start, end })
+        Some(EventMeta { start, end, extra: IndexMap::new() })
     } else {
         None
     };
@@ -436,6 +438,7 @@ pub fn create_entry(
         updated_at: now,
         task,
         event,
+        extra: IndexMap::new(),
     };
 
     let dest = journal.root
@@ -485,6 +488,7 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
             due: None,
             started_at: None,
             closed_at: None,
+            extra: IndexMap::new(),
         });
         if let Some(d) = fields.task_due {
             task.due = Some(d);
@@ -512,7 +516,7 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
         let event = entry.frontmatter.event.get_or_insert_with(|| {
             let start = fields.event_start.or(fields.event_end).unwrap();
             let end = fields.event_end.or(fields.event_start).unwrap();
-            EventMeta { start, end }
+            EventMeta { start, end, extra: IndexMap::new() }
         });
         if let Some(s) = fields.event_start {
             event.start = s;
