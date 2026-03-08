@@ -10,6 +10,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Bundled CLI binary updated to v0.2.1: repeated `entry fix` calls no longer accumulate blank lines between the frontmatter fence and the body
 
-## [Unreleased]
+## [0.2.0] - 2026-03-08
 
 - Initial release
