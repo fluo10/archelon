@@ -2,6 +2,7 @@ use std::path::Path;
 
 use caretta_id::CarettaId;
 use chrono::NaiveDateTime;
+use indexmap::IndexMap;
 
 use crate::{
     entry::{Entry, Frontmatter},
@@ -49,6 +50,7 @@ fn bare_frontmatter(path: &Path) -> Result<Frontmatter> {
         tags: Vec::new(),
         task: None,
         event: None,
+        extra: IndexMap::new(),
     })
 }
 
@@ -103,6 +105,7 @@ pub fn write_entry(entry: &mut Entry) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indexmap::IndexMap;
     use std::path::PathBuf;
 
     /// A valid archelon-managed path with CarettaId "0000000" (NIL).
@@ -138,6 +141,7 @@ mod tests {
             due: Some("2026-03-10T00:00:00".parse().unwrap()),
             started_at: None,
             closed_at: None,
+            extra: IndexMap::new(),
         });
         let rendered = render_entry(&entry);
         assert!(rendered.contains("title: My Task"));

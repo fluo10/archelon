@@ -93,6 +93,7 @@ version = "0.2.1"
 dependencies = [
  "caretta-id",
  "chrono",
+ "indexmap",
  "serde",
  "serde_yaml",
  "thiserror",
