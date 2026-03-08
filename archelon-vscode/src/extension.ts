@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath } from './cli';
+import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath } from './cli';
 import { findJournalRoot, isManagedFilename } from './journal';
 
 /** Return a cwd suitable for CLI calls: active file's dir if inside a journal, else workspace root. */
@@ -13,6 +13,8 @@ function getJournalCwd(): string | null {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+    setExtensionPath(context.extensionPath);
+
     // ── Command: New Entry ────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.commands.registerCommand('archelon.newEntry', async () => {

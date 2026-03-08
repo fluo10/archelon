@@ -1,12 +1,28 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
 const execFileAsync = promisify(execFile);
 
+let _extensionPath: string | undefined;
+
+export function setExtensionPath(p: string) {
+    _extensionPath = p;
+}
+
 function bin(): string {
-    return vscode.workspace.getConfiguration('archelon').get<string>('binaryPath', 'archelon');
+    const configured = vscode.workspace.getConfiguration('archelon').get<string>('binaryPath', '');
+    if (configured) { return configured; }
+
+    if (_extensionPath) {
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const bundled = path.join(_extensionPath, 'bin', `archelon${ext}`);
+        if (fs.existsSync(bundled)) { return bundled; }
+    }
+
+    return 'archelon';
 }
 
 /**

@@ -92,8 +92,65 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
 
-  release:
+  vsix:
     needs: [prepare, build]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            vsce_target: linux-x64
+            artifact: archelon-cli-linux-x86_64
+          - os: ubuntu-24.04-arm
+            vsce_target: linux-arm64
+            artifact: archelon-cli-linux-aarch64
+          - os: macos-latest
+            vsce_target: darwin-arm64
+            artifact: archelon-cli-macos-aarch64
+          - os: windows-latest
+            vsce_target: win32-x64
+            artifact: archelon-cli-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: archelon-vscode
+
+      - name: Download CLI binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: archelon-vscode/bin/
+
+      - name: Rename binary to archelon (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mv archelon-vscode/bin/${{ matrix.artifact }} archelon-vscode/bin/archelon
+          chmod +x archelon-vscode/bin/archelon
+
+      - name: Rename binary to archelon.exe (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Rename-Item archelon-vscode/bin/${{ matrix.artifact }} archelon.exe
+
+      - name: Package VSIX
+        run: npx vsce package --target ${{ matrix.vsce_target }}
+        working-directory: archelon-vscode
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archelon-vscode-${{ matrix.vsce_target }}.vsix
+          path: archelon-vscode/*.vsix
+
+  release:
+    needs: [prepare, build, vsix]
     runs-on: ubuntu-latest
     permissions:
       contents: write

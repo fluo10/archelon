@@ -1,6 +1,7 @@
 {
   "name": "archelon-vscode",
   "displayName": "Archelon",
+  "publisher": "fluo10",
   "description": "VS Code extension for the Archelon journal",
   "version": "0.0.1",
   "engines": {
