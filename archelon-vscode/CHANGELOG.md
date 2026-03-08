@@ -4,6 +4,12 @@ All notable changes to the "archelon-vscode" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.3.0] - 2026-03-09
+
+### Added
+
+- Bundled CLI binary updated to v0.3.0: `task.started_at` timestamp with `--task-started` filter, and preservation of unknown frontmatter fields
+
 ## [0.2.1] - 2026-03-08
 
 ### Fixed

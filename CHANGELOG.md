@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-09
+
+### Added
+
+- `task.started_at` timestamp field: auto-set when task status transitions to `in_progress`; supports manual override via `--task-started-at DATETIME` in `entry new` / `entry set`
+- `--task-started` filter for `entry list` (CLI and MCP): matches in-progress tasks (with optional `--period` overlap check)
+- Preserve unknown frontmatter fields across round-trips — unknown YAML keys in `Frontmatter`, `TaskMeta`, and `EventMeta` are now retained on read/write, preventing data loss when entries were created by a newer version of archelon
+
 ## [0.2.1] - 2026-03-08
 
 ### Fixed
