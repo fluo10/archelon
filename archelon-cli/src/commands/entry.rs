@@ -122,6 +122,18 @@ pub enum EntryCommand {
         #[arg(long)]
         touch: bool,
     },
+    /// Print the absolute path of an entry, or create a new template and print its path.
+    /// Intended for editor integrations that need a file path without opening an editor.
+    Path {
+        /// File path to the entry, or an ID / ID prefix.
+        /// Required unless --new is given.
+        #[arg(required_unless_present = "new")]
+        entry: Option<String>,
+
+        /// Create a new entry template file and print its path instead of resolving an existing entry
+        #[arg(long)]
+        new: bool,
+    },
     /// Delete an entry file
     Remove {
         /// Path to the entry file, or an ID / ID prefix
@@ -222,6 +234,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
         EntryCommand::Set { entry, title, fields } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, title, fields),
         EntryCommand::Check { entry } => check(journal_dir, &entry),
         EntryCommand::Fix { entry, touch } => fix(journal_dir, &entry, touch),
+        EntryCommand::Path { entry, new } => entry_path(journal_dir, entry.as_deref(), new),
         EntryCommand::Remove { entry } => remove(journal_dir, &entry),
     }
 }
@@ -436,6 +449,20 @@ fn fix(journal_dir: Option<&Path>, entry: &str, touch: bool) -> Result<()> {
             new_path.file_name().unwrap_or_default().to_string_lossy(),
         ),
         None => println!("ok: {} (already correct)", path.display()),
+    }
+    Ok(())
+}
+
+// ── path ──────────────────────────────────────────────────────────────────────
+
+fn entry_path(journal_dir: Option<&Path>, entry: Option<&str>, new: bool) -> Result<()> {
+    if new {
+        let journal = open_journal(journal_dir)?;
+        let path = ops::prepare_new_entry(&journal)?;
+        println!("{}", path.display());
+    } else {
+        let path = resolve_entry(journal_dir, entry.unwrap())?;
+        println!("{}", path.display());
     }
     Ok(())
 }
