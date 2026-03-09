@@ -25,6 +25,14 @@
 //! - `tags`: many-to-many tag index for efficient tag filtering.
 //! - `entries_fts`: FTS5 virtual table (unicode61) over `title` + `body` for
 //!   full-text search.
+//!
+//! # Schema versioning
+//!
+//! [`SCHEMA_VERSION`] is stored in SQLite's `PRAGMA user_version`.
+//! - **DB version = 0** (fresh file): schema is applied and version is set.
+//! - **DB version < app version**: schema changed; cache is wiped and rebuilt automatically.
+//! - **DB version > app version**: the cache was created by a newer archelon; an error is
+//!   returned instructing the user to update archelon or run `archelon cache rebuild`.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -39,6 +47,11 @@ use crate::{
     journal::Journal,
     parser::read_entry,
 };
+
+// ── schema version ────────────────────────────────────────────────────────────
+
+/// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
+pub const SCHEMA_VERSION: i32 = 1;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -81,17 +94,103 @@ CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/// Open (or create) the SQLite cache for `journal`, applying the schema if needed.
+/// Open (or create) the SQLite cache for `journal`.
+///
+/// - **Fresh DB** (user_version = 0): schema is applied and version is set.
+/// - **DB version < [`SCHEMA_VERSION`]**: cache is wiped and recreated automatically
+///   (a notice is printed to stderr).
+/// - **DB version > [`SCHEMA_VERSION`]**: returns [`Error::CacheSchemaTooNew`];
+///   the user must update archelon or run `archelon cache rebuild`.
 pub fn open_cache(journal: &Journal) -> Result<Connection> {
     let db_path = journal.cache_db_path()?;
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let conn = Connection::open(&db_path)?;
-    // WAL for better concurrency; foreign keys for ON DELETE CASCADE on tags.
+    open_or_init(&db_path)
+}
+
+/// Delete the existing cache and create a fresh one.
+///
+/// Equivalent to removing the DB files and calling [`open_cache`].
+/// After this call the returned connection has an empty, schema-correct DB;
+/// call [`sync_cache`] to populate it.
+pub fn rebuild_cache(journal: &Journal) -> Result<Connection> {
+    let db_path = journal.cache_db_path()?;
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    wipe_db_files(&db_path);
+    open_or_init(&db_path)
+}
+
+/// Summary information about the current cache state.
+pub struct CacheInfo {
+    pub db_path: PathBuf,
+    pub schema_version: i32,
+    pub entry_count: u64,
+    pub unique_tag_count: u64,
+}
+
+/// Collect cache statistics for display.
+pub fn cache_info(journal: &Journal, conn: &Connection) -> Result<CacheInfo> {
+    let db_path = journal.cache_db_path()?;
+    let schema_version =
+        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    let entry_count =
+        conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get::<_, u64>(0))?;
+    let unique_tag_count =
+        conn.query_row("SELECT COUNT(DISTINCT tag) FROM tags", [], |row| row.get::<_, u64>(0))?;
+    Ok(CacheInfo { db_path, schema_version, entry_count, unique_tag_count })
+}
+
+// ── open helpers ──────────────────────────────────────────────────────────────
+
+fn open_or_init(db_path: &Path) -> Result<Connection> {
+    let conn = Connection::open(db_path)?;
+    // WAL for better concurrency; foreign keys required for ON DELETE CASCADE.
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-    conn.execute_batch(SCHEMA)?;
+
+    let db_version: i32 =
+        conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+
+    if db_version == 0 {
+        // Fresh DB: apply schema and stamp the version.
+        conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        return Ok(conn);
+    }
+
+    if db_version > SCHEMA_VERSION {
+        return Err(Error::CacheSchemaTooNew {
+            db_version,
+            app_version: SCHEMA_VERSION,
+        });
+    }
+
+    if db_version < SCHEMA_VERSION {
+        // Schema changed: wipe the old DB and start fresh.
+        eprintln!(
+            "info: cache schema upgraded v{db_version} → v{SCHEMA_VERSION}, rebuilding..."
+        );
+        drop(conn);
+        wipe_db_files(db_path);
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        return Ok(conn);
+    }
+
     Ok(conn)
+}
+
+/// Remove the main DB file plus any WAL/SHM sidecar files.  Errors are ignored
+/// (files may not exist or may already be gone).
+fn wipe_db_files(db_path: &Path) {
+    let base = db_path.to_string_lossy();
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{base}{suffix}"));
+    }
 }
 
 /// Incrementally sync the cache against the journal's `.md` files.
