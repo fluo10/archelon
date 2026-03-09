@@ -12,6 +12,7 @@ use caretta_id::CarettaId;
 use chrono::{Datelike as _, NaiveDateTime};
 
 use crate::{
+    cache,
     entry::{Entry, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
@@ -431,6 +432,7 @@ pub fn create_entry(
     let now = chrono::Local::now().naive_local();
     let frontmatter = Frontmatter {
         id,
+        parent_id: None,
         title: title.to_owned(),
         slug: fields.slug,
         tags,
@@ -583,7 +585,9 @@ pub fn resolve_entry(entry_ref: &EntryRef, journal_dir: Option<&Path>) -> Result
             } else {
                 Journal::find()?
             };
-            journal.find_entry_by_id(id)
+            let conn = cache::open_cache(&journal)?;
+            cache::sync_cache(&journal, &conn)?;
+            cache::find_entry_by_id(&conn, id)
         }
     }
 }

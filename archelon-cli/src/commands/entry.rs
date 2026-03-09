@@ -488,6 +488,12 @@ fn entry_path(journal_dir: Option<&Path>, entry: Option<&str>, new: bool) -> Res
 fn remove(journal_dir: Option<&Path>, entry: &str) -> Result<()> {
     let path = resolve_entry(journal_dir, entry)?;
     ops::remove_entry(&path)?;
+    // Keep the cache consistent after explicit deletion.
+    if let Ok(journal) = open_journal(journal_dir) {
+        if let Ok(conn) = archelon_core::cache::open_cache(&journal) {
+            let _ = archelon_core::cache::remove_from_cache(&conn, &path);
+        }
+    }
     println!("removed: {}", path.display());
     Ok(())
 }
