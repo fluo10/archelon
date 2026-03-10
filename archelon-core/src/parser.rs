@@ -44,7 +44,7 @@ fn bare_frontmatter(path: &Path) -> Result<Frontmatter> {
     Ok(Frontmatter {
         id,
         title: String::new(),
-        slug: None,
+        slug: String::new(),
         created_at: NaiveDateTime::default(),
         updated_at: NaiveDateTime::default(),
         tags: Vec::new(),

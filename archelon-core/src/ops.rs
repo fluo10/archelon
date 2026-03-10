@@ -432,7 +432,7 @@ pub fn create_entry(
     let frontmatter = Frontmatter {
         id,
         title: title.to_owned(),
-        slug: fields.slug,
+        slug: fields.slug.unwrap_or_default(),
         tags,
         created_at: now,
         updated_at: now,
@@ -472,7 +472,7 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
         entry.body = b;
     }
     if let Some(s) = fields.slug {
-        entry.frontmatter.slug = Some(s);
+        entry.frontmatter.slug = s;
     }
     if let Some(ts) = fields.tags {
         entry.frontmatter.tags = ts;
@@ -715,9 +715,13 @@ pub fn remove_entry(path: &Path) -> Result<()> {
 /// Build the canonical filename for an entry using the frontmatter slug (if set)
 /// or `slugify(title)` as a fallback.
 fn entry_filename_from_frontmatter(id: CarettaId, fm: &Frontmatter) -> String {
-    let slug = fm.slug.clone().unwrap_or_else(|| {
-        if fm.title.is_empty() { String::new() } else { slugify(&fm.title) }
-    });
+    let slug = if !fm.slug.is_empty() {
+        fm.slug.clone()
+    } else if fm.title.is_empty() {
+        String::new()
+    } else {
+        slugify(&fm.title)
+    };
     if slug.is_empty() {
         format!("{id}.md")
     } else {

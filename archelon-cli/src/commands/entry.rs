@@ -86,10 +86,6 @@ pub enum EntryCommand {
     },
     /// Create a new entry with an optional body.
     New {
-        /// Title of the entry — written into the frontmatter and used to generate the filename slug
-        #[arg(long, short)]
-        title: String,
-
         #[command(flatten)]
         fields: EntryFields,
     },
@@ -106,10 +102,6 @@ pub enum EntryCommand {
     Set {
         /// Path to the entry file, or an ID / ID prefix
         entry: String,
-
-        /// New title
-        #[arg(long, short)]
-        title: Option<String>,
 
         #[command(flatten)]
         fields: EntryFields,
@@ -153,6 +145,10 @@ pub enum EntryCommand {
 /// and passed to the core operation functions.
 #[derive(Args)]
 pub struct EntryFields {
+    /// Title of the entry — written into the frontmatter and used to generate the filename slug
+    #[arg(long, short)]
+    pub title: Option<String>,
+
     /// Body content (Markdown). For `entry set`, replaces the existing body.
     #[arg(long, short)]
     pub body: Option<String>,
@@ -233,7 +229,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
             print_entries(&entries, filter.has_any_filter(), json)
         }
         EntryCommand::Show { entry } => show(&resolve_entry(journal_dir, &entry)?),
-        EntryCommand::New { title, fields } => new(journal_dir, title, fields),
+        EntryCommand::New { fields } => new(journal_dir, fields),
         EntryCommand::Edit { entry, new } => {
             if new {
                 edit_new(journal_dir)
@@ -243,7 +239,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
                 bail!("specify an entry or use --new to create one")
             }
         }
-        EntryCommand::Set { entry, title, fields } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, title, fields),
+        EntryCommand::Set { entry, fields } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, fields),
         EntryCommand::Check { entry } => check(journal_dir, &entry),
         EntryCommand::Fix { entry, touch } => fix(journal_dir, &entry, touch),
         EntryCommand::Path { entry, new } => entry_path(journal_dir, entry.as_deref(), new),
@@ -363,8 +359,9 @@ fn show(path: &Path) -> Result<()> {
 
 // ── new ───────────────────────────────────────────────────────────────────────
 
-fn new(journal_dir: Option<&Path>, title: String, fields: EntryFields) -> Result<()> {
+fn new(journal_dir: Option<&Path>, fields: EntryFields) -> Result<()> {
     let journal = open_journal(journal_dir)?;
+    let title = fields.title.clone().unwrap_or_default();
     let body = fields.body.clone().unwrap_or_default();
     let dest = ops::create_entry(&journal, &title, body, fields.into())?;
     println!("created: {}", dest.display());
@@ -415,8 +412,8 @@ fn edit_new(journal_dir: Option<&Path>) -> Result<()> {
 
 // ── set ───────────────────────────────────────────────────────────────────────
 
-fn set(journal_dir: Option<&Path>, path: &Path, title: Option<String>, fields: EntryFields) -> Result<()> {
-    if title.is_none()
+fn set(journal_dir: Option<&Path>, path: &Path, fields: EntryFields) -> Result<()> {
+    if fields.title.is_none()
         && fields.body.is_none()
         && fields.slug.is_none()
         && fields.tags.is_none()
@@ -430,6 +427,7 @@ fn set(journal_dir: Option<&Path>, path: &Path, title: Option<String>, fields: E
         bail!("nothing to update — specify at least one field");
     }
     let _ = journal_dir; // reserved for future use
+    let title = fields.title.clone();
     let body = fields.body.clone();
     if let Some(new_path) = ops::update_entry(path, title, body, fields.into())? {
         println!("updated and renamed: {}", new_path.display());
