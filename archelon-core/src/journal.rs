@@ -200,12 +200,38 @@ pub struct JournalSection {
     /// directory moves and is never synced by git/Syncthing/Nextcloud.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Uuid>,
+
+    /// What to do when two entries share the same title during cache sync.
+    ///
+    /// - `allow` (default): duplicates are silently permitted.
+    /// - `warn`: a warning is printed to stderr but sync succeeds.
+    /// - `error`: sync fails immediately with [`Error::DuplicateTitle`].
+    #[serde(default)]
+    pub duplicate_title: DuplicateTitlePolicy,
 }
 
 impl Default for JournalSection {
     fn default() -> Self {
-        JournalSection { timezone: "UTC".to_owned(), week_start: WeekStart::Monday, id: None }
+        JournalSection {
+            timezone: "UTC".to_owned(),
+            week_start: WeekStart::Monday,
+            id: None,
+            duplicate_title: DuplicateTitlePolicy::default(),
+        }
     }
+}
+
+/// Controls how duplicate entry titles are treated during cache sync.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DuplicateTitlePolicy {
+    /// Duplicates are silently allowed.
+    #[default]
+    Allow,
+    /// Print a warning to stderr for each duplicate title, but continue.
+    Warn,
+    /// Abort sync with [`Error::DuplicateTitle`] on the first duplicate found.
+    Error,
 }
 
 /// First day of the week for `--this-week` calculations.
