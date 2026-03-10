@@ -305,6 +305,114 @@ pub fn find_entry_by_id(conn: &Connection, id_input: &str) -> Result<PathBuf> {
     }
 }
 
+/// Read all entries from the cache as [`Entry`] structs.
+///
+/// Both a sync and a cache-open are expected to have been done by the caller.
+/// `slug` and unknown frontmatter fields are not stored in the cache; they
+/// default to `None`/empty in the returned structs.
+pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::Entry>> {
+    use chrono::NaiveDateTime;
+    use indexmap::IndexMap;
+    use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
+
+    // Fetch all tags in one query to avoid N+1 queries.
+    let mut tag_map: HashMap<CarettaId, Vec<String>> = HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT entry_id, tag FROM tags ORDER BY entry_id, tag")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, CarettaId>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (id, tag) in rows {
+            tag_map.entry(id).or_default().push(tag);
+        }
+    }
+
+    let parse_dt = |s: &str| {
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default()
+    };
+    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+        s.as_deref()
+            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT id, parent_id, path, title, created_at, updated_at,
+                is_task, task_status, task_due, task_started_at, task_closed_at,
+                is_event, event_start, event_end, body
+         FROM entries ORDER BY id",
+    )?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, CarettaId>(0)?,
+                row.get::<_, Option<CarettaId>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i32>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, i32>(11)?,
+                row.get::<_, Option<String>>(12)?,
+                row.get::<_, Option<String>>(13)?,
+                row.get::<_, String>(14)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut result = Vec::with_capacity(rows.len());
+    for (id, parent_id, path, title, created_at, updated_at,
+         is_task, task_status, task_due, task_started_at, task_closed_at,
+         is_event, event_start, event_end, body) in rows
+    {
+        let tags = tag_map.remove(&id).unwrap_or_default();
+
+        let task = if is_task != 0 {
+            Some(TaskMeta {
+                status: task_status.unwrap_or_else(|| "open".to_owned()),
+                due: parse_dt_opt(task_due),
+                started_at: parse_dt_opt(task_started_at),
+                closed_at: parse_dt_opt(task_closed_at),
+                extra: IndexMap::new(),
+            })
+        } else {
+            None
+        };
+
+        let event = if is_event != 0 {
+            match (parse_dt_opt(event_start), parse_dt_opt(event_end)) {
+                (Some(start), Some(end)) => Some(EventMeta { start, end, extra: IndexMap::new() }),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        let frontmatter = Frontmatter {
+            id,
+            parent_id,
+            title,
+            slug: None,
+            tags,
+            created_at: parse_dt(&created_at),
+            updated_at: parse_dt(&updated_at),
+            task,
+            event,
+            extra: IndexMap::new(),
+        };
+
+        result.push(Entry { path: PathBuf::from(path), frontmatter, body });
+    }
+
+    Ok(result)
+}
+
 /// Remove an entry row from the cache by file path.
 ///
 /// Tags are removed automatically via `ON DELETE CASCADE`.
