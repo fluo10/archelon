@@ -16,7 +16,7 @@ use crate::{
     entry::{Entry, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
-    journal::{is_managed_filename, Journal, slugify},
+    journal::{Journal, slugify},
     parser::{read_entry, render_entry},
     period::Period,
 };
@@ -281,9 +281,6 @@ pub fn list_entries(
     let has_filter = filter.has_any_filter();
     let mut result = Vec::new();
     for p in &paths {
-        if !is_managed_filename(p) {
-            continue;
-        }
         let entry = match read_entry(p) {
             Ok(e) => e,
             Err(e) => {
@@ -593,8 +590,6 @@ pub fn resolve_entry(entry_ref: &EntryRef, journal_dir: Option<&Path>) -> Result
 /// A problem reported by [`check_entry`].
 #[derive(Debug, Clone)]
 pub enum CheckIssue {
-    /// The file does not follow the archelon-managed filename convention.
-    UnmanagedFilename,
     /// The filename does not match the ID + title/slug derived from the frontmatter.
     FilenameMismatch {
         /// The filename the entry *should* have.
@@ -605,8 +600,6 @@ pub enum CheckIssue {
 impl CheckIssue {
     pub fn as_str(&self) -> String {
         match self {
-            CheckIssue::UnmanagedFilename =>
-                "not a managed entry (filename lacks a valid CarettaId prefix)".to_owned(),
             CheckIssue::FilenameMismatch { expected_filename } =>
                 format!("filename mismatch — should be `{expected_filename}`"),
         }
@@ -620,10 +613,6 @@ impl CheckIssue {
 /// Returns a (possibly empty) list of [`CheckIssue`]s.
 /// An empty list means the entry passes all checks.
 pub fn check_entry(path: &Path) -> Result<Vec<CheckIssue>> {
-    if !is_managed_filename(path) {
-        return Ok(vec![CheckIssue::UnmanagedFilename]);
-    }
-
     let entry = read_entry(path)?;
     let expected = entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
     let actual = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
@@ -692,13 +681,6 @@ fn fix_entry_mut(entry: &mut Entry, touch: bool) -> Result<Option<PathBuf>> {
 /// Returns `Some(new_path)` if the file was renamed, `None` if it was already correct.
 /// Returns `Err` if the file is not a managed entry.
 pub fn fix_entry(path: &Path, touch: bool) -> Result<Option<PathBuf>> {
-    if !is_managed_filename(path) {
-        return Err(Error::InvalidEntry(format!(
-            "{}: not a managed entry (filename lacks a valid CarettaId prefix)",
-            path.display()
-        )));
-    }
-
     let mut entry = read_entry(path)?;
     fix_entry_mut(&mut entry, touch)
 }
