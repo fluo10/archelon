@@ -33,24 +33,18 @@ install_binary() {
   ASSET="${BINARY}-${OS}-${ARCH}"
   URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
-  case "$BINARY" in
-    archelon-cli) INSTALL_NAME="archelon" ;;
-    *)            INSTALL_NAME="$BINARY" ;;
-  esac
-
-  printf "Installing %s %s (%s/%s) to %s...\n" "$INSTALL_NAME" "$VERSION" "$OS" "$ARCH" "$INSTALL_DIR"
+  printf "Installing %s %s (%s/%s) to %s...\n" "$BINARY" "$VERSION" "$OS" "$ARCH" "$INSTALL_DIR"
 
   TMP=$(mktemp)
   curl -fsSL "$URL" -o "$TMP"
   chmod +x "$TMP"
-  mv "$TMP" "${INSTALL_DIR}/${INSTALL_NAME}"
+  mv "$TMP" "${INSTALL_DIR}/${BINARY}"
 
-  echo "Done! ${INSTALL_DIR}/${INSTALL_NAME} installed."
+  echo "Done! ${INSTALL_DIR}/${BINARY} installed."
 }
 
 if [ $# -eq 0 ]; then
-  install_binary "archelon-cli"
-  install_binary "archelon-mcp"
+  install_binary "archelon"
 else
   for BINARY in "$@"; do
     install_binary "$BINARY"

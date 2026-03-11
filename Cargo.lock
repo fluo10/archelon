@@ -93,17 +93,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "archelon-cli"
-version = "0.4.0-alpha"
-dependencies = [
- "anyhow",
- "archelon-core",
- "chrono",
- "clap",
- "serde_json",
-]
-
-[[package]]
 name = "archelon-core"
 version = "0.4.0-alpha"
 dependencies = [
@@ -117,22 +106,6 @@ dependencies = [
  "thiserror",
  "toml",
  "uuid",
-]
-
-[[package]]
-name = "archelon-mcp"
-version = "0.4.0-alpha"
-dependencies = [
- "anyhow",
- "archelon-core",
- "chrono",
- "clap",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]

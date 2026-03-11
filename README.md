@@ -119,8 +119,6 @@ Download the platform-specific VSIX (with the CLI binary bundled) from the [Rele
 archelon/
 ├── archelon-core/    # Data model, Markdown parser/serializer, SQLite cache
 ├── archelon/         # Unified binary: CLI + MCP server (archelon mcp)
-├── archelon-cli/     # [DEPRECATED] use the archelon crate instead
-├── archelon-mcp/     # [DEPRECATED] use archelon mcp instead
 └── archelon-vscode/  # VS Code extension
 ```
 
