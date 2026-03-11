@@ -13,19 +13,18 @@ if (-not $Version) {
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 function Install-Binary {
-    param([string]$Binary, [string]$InstallName)
+    param([string]$Binary)
 
     $Asset = "$Binary-windows-x86_64.exe"
     $Url = "https://github.com/$Repo/releases/download/$Version/$Asset"
-    $Dest = Join-Path $InstallDir "$InstallName.exe"
+    $Dest = Join-Path $InstallDir "$Binary.exe"
 
-    Write-Host "Installing $InstallName $Version to $InstallDir..."
+    Write-Host "Installing $Binary $Version to $InstallDir..."
     Invoke-WebRequest -Uri $Url -OutFile $Dest
     Write-Host "Done! $Dest installed."
 }
 
-Install-Binary 'archelon-cli' 'archelon'
-Install-Binary 'archelon-mcp' 'archelon-mcp'
+Install-Binary 'archelon'
 
 $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($UserPath -notlike "*$InstallDir*") {
