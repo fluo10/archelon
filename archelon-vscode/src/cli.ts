@@ -86,6 +86,7 @@ export interface EntryRecord {
     updated_at: string;
     task?: { status: string; due?: string; closed_at?: string } | null;
     event?: { start: string; end: string } | null;
+    children?: EntryRecord[];
 }
 
 /**
@@ -94,5 +95,14 @@ export interface EntryRecord {
  */
 export async function listEntries(cwd: string): Promise<EntryRecord[]> {
     const { stdout } = await execFileAsync(bin(), ['entry', 'list', '--json'], { cwd });
+    return JSON.parse(stdout) as EntryRecord[];
+}
+
+/**
+ * Run `archelon entry tree --json` and return the nested tree.
+ * Throws on non-zero exit (e.g. journal not found).
+ */
+export async function treeEntries(cwd: string): Promise<EntryRecord[]> {
+    const { stdout } = await execFileAsync(bin(), ['entry', 'tree', '--json'], { cwd });
     return JSON.parse(stdout) as EntryRecord[];
 }
