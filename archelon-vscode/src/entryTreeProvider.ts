@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EntryRecord, treeEntries } from './cli';
+import { EntryRecord, SortField, SortOrder, treeEntries } from './cli';
 import { findJournalRoot } from './journal';
 
 export class EntryItem extends vscode.TreeItem {
@@ -9,7 +9,7 @@ export class EntryItem extends vscode.TreeItem {
         public readonly children: EntryRecord[],
     ) {
         super(
-            record.title || '(untitled)',
+            `${record.id} ${record.title || '(untitled)'}`,
             children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None,
@@ -40,9 +40,13 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private _filter = '';
+    private _sortBy: SortField | undefined = undefined;
+    private _sortOrder: SortOrder = 'asc';
     private _rootRecords: EntryRecord[] = [];
 
     get filter(): string { return this._filter; }
+    get sortBy(): SortField | undefined { return this._sortBy; }
+    get sortOrder(): SortOrder { return this._sortOrder; }
 
     refresh(): void {
         this._rootRecords = [];
@@ -51,6 +55,13 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
 
     setFilter(text: string): void {
         this._filter = text;
+        this._rootRecords = [];
+        this._onDidChangeTreeData.fire();
+    }
+
+    setSort(sortBy: SortField | undefined, sortOrder: SortOrder): void {
+        this._sortBy = sortBy;
+        this._sortOrder = sortOrder;
         this._rootRecords = [];
         this._onDidChangeTreeData.fire();
     }
@@ -68,7 +79,7 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
         if (!cwd) { return []; }
 
         try {
-            this._rootRecords = await treeEntries(cwd);
+            this._rootRecords = await treeEntries(cwd, this._sortBy, this._sortOrder);
         } catch {
             return [];
         }

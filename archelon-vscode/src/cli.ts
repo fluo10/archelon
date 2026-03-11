@@ -98,11 +98,17 @@ export async function listEntries(cwd: string): Promise<EntryRecord[]> {
     return JSON.parse(stdout) as EntryRecord[];
 }
 
+export type SortField = 'id' | 'title' | 'task_status' | 'created_at' | 'updated_at' | 'task_due' | 'event_start' | 'event_end';
+export type SortOrder = 'asc' | 'desc';
+
 /**
  * Run `archelon entry tree --json` and return the nested tree.
  * Throws on non-zero exit (e.g. journal not found).
  */
-export async function treeEntries(cwd: string): Promise<EntryRecord[]> {
-    const { stdout } = await execFileAsync(bin(), ['entry', 'tree', '--json'], { cwd });
+export async function treeEntries(cwd: string, sortBy?: SortField, sortOrder?: SortOrder): Promise<EntryRecord[]> {
+    const args = ['entry', 'tree', '--json'];
+    if (sortBy) { args.push('--sort-by', sortBy); }
+    if (sortOrder) { args.push('--sort-order', sortOrder); }
+    const { stdout } = await execFileAsync(bin(), args, { cwd });
     return JSON.parse(stdout) as EntryRecord[];
 }

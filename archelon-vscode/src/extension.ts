@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath } from './cli';
+import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath, SortField, SortOrder } from './cli';
 import { EntryItem, EntryTreeProvider } from './entryTreeProvider';
 import { findJournalRoot, isManagedFilename } from './journal';
 
@@ -27,6 +27,38 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('archelon.refreshTree', () => {
             treeProvider.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.sortTree', async () => {
+            const fields: { label: string; field: SortField | undefined }[] = [
+                { label: '$(circle-slash) Default (none)', field: undefined },
+                { label: 'ID',           field: 'id' },
+                { label: 'Title',        field: 'title' },
+                { label: 'Updated at',   field: 'updated_at' },
+                { label: 'Created at',   field: 'created_at' },
+                { label: 'Task status',  field: 'task_status' },
+                { label: 'Task due',     field: 'task_due' },
+                { label: 'Event start',  field: 'event_start' },
+                { label: 'Event end',    field: 'event_end' },
+            ];
+            const picked = await vscode.window.showQuickPick(fields, {
+                placeHolder: 'Sort entries by…',
+            });
+            if (picked === undefined) { return; }
+
+            let order: SortOrder = 'asc';
+            if (picked.field !== undefined) {
+                const orderPick = await vscode.window.showQuickPick(
+                    [{ label: '$(arrow-up) Ascending', value: 'asc' as SortOrder }, { label: '$(arrow-down) Descending', value: 'desc' as SortOrder }],
+                    { placeHolder: 'Sort order' },
+                );
+                if (orderPick === undefined) { return; }
+                order = orderPick.value;
+            }
+
+            treeProvider.setSort(picked.field, order);
         })
     );
 
