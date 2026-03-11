@@ -45,11 +45,11 @@ use std::{
 };
 
 use caretta_id::CarettaId;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension as _};
 
 use crate::{
     error::{Error, Result},
-    journal::Journal,
+    journal::{DuplicateTitlePolicy, Journal},
     parser::read_entry,
 };
 
@@ -229,7 +229,32 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
 
     let mut entry_changed = false;
 
-    conn.execute_batch("BEGIN")?;
+    // Defer FK checks to commit time so children can be inserted before their
+    // parents (e.g. when syncing a journal from scratch or after a Syncthing
+    // propagation that delivers files out of topological order).
+    conn.execute_batch("PRAGMA defer_foreign_keys=ON; BEGIN")?;
+
+    // ── delete files removed from disk ───────────────────────────────────────
+    // Process deletions first so that renamed files (old path gone, new path
+    // present) are cleaned up before the upsert loop runs.  Without this
+    // ordering the duplicate-ID check below would fire on the stale cache row
+    // that still holds the same ID as the renamed file's new path.
+    for db_path in db_files.keys() {
+        if !disk_paths.contains(db_path.as_str()) {
+            let was_entry = conn
+                .query_row(
+                    "SELECT 1 FROM entries WHERE path = ?1",
+                    [db_path.as_str()],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            // Deleting from `files` cascades to `entries` and then `tags`.
+            conn.execute("DELETE FROM files WHERE path = ?1", [db_path])?;
+            if was_entry {
+                entry_changed = true;
+            }
+        }
+    }
 
     // ── upsert new / modified files ──────────────────────────────────────────
     for (path, mtime) in &disk_files {
@@ -246,6 +271,26 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
             )?;
             match read_entry(path) {
                 Ok(entry) => {
+                    // ── duplicate ID check ────────────────────────────────
+                    // Detect if another file already holds the same ID.
+                    // `INSERT OR REPLACE` would silently overwrite it, so we
+                    // check explicitly and abort the sync with an error.
+                    let conflict: Option<String> = conn
+                        .query_row(
+                            "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
+                            params![entry.frontmatter.id, path_str.as_ref()],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    if let Some(other) = conflict {
+                        conn.execute_batch("ROLLBACK")?;
+                        return Err(Error::DuplicateId(
+                            entry.frontmatter.id.to_string(),
+                            path.display().to_string(),
+                            other,
+                        ));
+                    }
+
                     upsert_entry(conn, &entry)?;
                     entry_changed = true;
                 }
@@ -261,20 +306,29 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
         }
     }
 
-    // ── delete files removed from disk ───────────────────────────────────────
-    for db_path in db_files.keys() {
-        if !disk_paths.contains(db_path.as_str()) {
-            let was_entry = conn
-                .query_row(
-                    "SELECT 1 FROM entries WHERE path = ?1",
-                    [db_path.as_str()],
-                    |_| Ok(()),
-                )
-                .is_ok();
-            // Deleting from `files` cascades to `entries` and then `tags`.
-            conn.execute("DELETE FROM files WHERE path = ?1", [db_path])?;
-            if was_entry {
-                entry_changed = true;
+    // ── duplicate title check ─────────────────────────────────────────────────
+    // Runs inside the transaction so it reflects all changes made above.
+    let dup_policy = journal.config().unwrap_or_default().journal.duplicate_title;
+    if dup_policy != DuplicateTitlePolicy::Allow {
+        let mut stmt = conn.prepare(
+            "SELECT title FROM entries WHERE title != '' \
+             GROUP BY title HAVING COUNT(*) > 1 LIMIT 1",
+        )?;
+        let dup: Option<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .next()
+            .transpose()?;
+
+        if let Some(title) = dup {
+            match dup_policy {
+                DuplicateTitlePolicy::Warn => {
+                    eprintln!("warn: duplicate title detected: `{title}`");
+                }
+                DuplicateTitlePolicy::Error => {
+                    conn.execute_batch("ROLLBACK")?;
+                    return Err(Error::DuplicateTitle(title));
+                }
+                DuplicateTitlePolicy::Allow => unreachable!(),
             }
         }
     }
@@ -341,6 +395,33 @@ pub fn find_entry_by_id(conn: &Connection, id_input: &str) -> Result<PathBuf> {
             Ok(path)
         }
         n => Err(Error::AmbiguousId(id_input.to_owned(), n)),
+    }
+}
+
+/// Look up an entry by its exact title.
+///
+/// Returns [`Error::AmbiguousTitle`] if more than one entry matches,
+/// and [`Error::EntryNotFoundByTitle`] if none do.
+///
+/// If the matched path no longer exists on disk the stale row is removed and
+/// [`Error::EntryNotFoundByTitle`] is returned.
+pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<PathBuf> {
+    let mut stmt = conn.prepare("SELECT path FROM entries WHERE title = ?1")?;
+    let paths: Vec<String> = stmt
+        .query_map([title], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    match paths.len() {
+        0 => Err(Error::EntryNotFoundByTitle(title.to_owned())),
+        1 => {
+            let path = PathBuf::from(&paths[0]);
+            if !path.exists() {
+                conn.execute("DELETE FROM files WHERE path = ?1", [&paths[0]])?;
+                return Err(Error::EntryNotFoundByTitle(title.to_owned()));
+            }
+            Ok(path)
+        }
+        n => Err(Error::AmbiguousTitle(title.to_owned(), n)),
     }
 }
 

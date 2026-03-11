@@ -1,49 +1,53 @@
 use std::path::PathBuf;
 
-use crate::{error::Result, journal::Journal};
-
-/// A reference to a journal entry — either a filesystem path or a CarettaId prefix.
+/// A reference to a journal entry — a filesystem path, a CarettaId, or a title.
 ///
 /// This is the canonical input type for commands that operate on a single entry
-/// (show, fix, remove, etc.).  Parse raw user input with [`EntryRef::parse`], then
-/// resolve it to a concrete [`PathBuf`] with [`EntryRef::resolve`].
+/// (show, fix, remove, etc.).  Parse raw CLI user input with [`EntryRef::parse`],
+/// then resolve it to a concrete [`PathBuf`] via [`ops::resolve_entry`].
+///
+/// # Syntax (CLI)
+///
+/// | Input form              | Resolved as     |
+/// |-------------------------|-----------------|
+/// | `@abc1234`              | `Id("abc1234")` |
+/// | `path/to/file.md`       | `Path(...)`     |
+/// | `./relative.md`         | `Path(...)`     |
+/// | `~/absolute.md`         | `Path(...)`     |
+/// | `anything_else`         | `Title(...)`    |
+///
+/// The `@` prefix is required for IDs to avoid ambiguity with titles that
+/// happen to be 7 alphanumeric characters.
 #[derive(Debug, Clone)]
 pub enum EntryRef {
     /// A filesystem path to the entry file.
     Path(PathBuf),
-    /// A CarettaId prefix (1–7 characters).
+    /// A CarettaId (the `@` prefix has been stripped).
     Id(String),
+    /// An exact entry title (case-sensitive).
+    Title(String),
 }
 
 impl EntryRef {
-    /// Classify a raw string as a path or an ID prefix.
+    /// Classify a raw CLI string as a path, an ID, or a title.
     ///
-    /// The string is treated as a **path** when it:
-    /// - contains a path separator (`/` or the platform separator), or
-    /// - starts with `.` or `~`, or
-    /// - ends with `.md`.
-    ///
-    /// Everything else is treated as a **CarettaId prefix**.
+    /// - Starts with `@` → [`EntryRef::Id`] (prefix stripped).
+    /// - Contains `/` or `\`, starts with `.` or `~`, or ends with `.md`
+    ///   → [`EntryRef::Path`].
+    /// - Anything else → [`EntryRef::Title`].
     pub fn parse(s: &str) -> Self {
+        if let Some(id) = s.strip_prefix('@') {
+            return EntryRef::Id(id.to_owned());
+        }
         if s.contains('/')
             || s.contains(std::path::MAIN_SEPARATOR)
             || s.starts_with('.')
+            || s.starts_with('~')
             || s.ends_with(".md")
         {
             EntryRef::Path(PathBuf::from(s))
         } else {
-            EntryRef::Id(s.to_owned())
-        }
-    }
-
-    /// Resolve this reference to a concrete file path.
-    ///
-    /// - `Path` variant: returns the stored path as-is.
-    /// - `Id` variant: delegates to [`Journal::find_entry_by_id`].
-    pub fn resolve(&self, journal: &Journal) -> Result<PathBuf> {
-        match self {
-            EntryRef::Path(p) => Ok(p.clone()),
-            EntryRef::Id(id) => journal.find_entry_by_id(id),
+            EntryRef::Title(s.to_owned())
         }
     }
 }

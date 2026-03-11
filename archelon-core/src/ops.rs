@@ -638,20 +638,31 @@ pub fn prepare_new_entry(journal: &Journal) -> Result<PathBuf> {
 /// Resolve an [`EntryRef`] to a concrete path, opening the journal when needed.
 ///
 /// - `Path` variant: returned as-is.
-/// - `Id` variant: searches the journal found via `journal_dir` (or auto-detected).
+/// - `Id` variant: looks up by CarettaId (prefix or full) via the cache.
+/// - `Title` variant: looks up by exact title (case-sensitive) via the cache.
 pub fn resolve_entry(entry_ref: &EntryRef, journal_dir: Option<&Path>) -> Result<PathBuf> {
     match entry_ref {
         EntryRef::Path(p) => Ok(p.clone()),
         EntryRef::Id(id) => {
-            let journal = if let Some(dir) = journal_dir {
-                Journal::from_root(dir.to_path_buf())?
-            } else {
-                Journal::find()?
-            };
+            let journal = open_journal_for_resolve(journal_dir)?;
             let conn = cache::open_cache(&journal)?;
             cache::sync_cache(&journal, &conn)?;
             cache::find_entry_by_id(&conn, id)
         }
+        EntryRef::Title(title) => {
+            let journal = open_journal_for_resolve(journal_dir)?;
+            let conn = cache::open_cache(&journal)?;
+            cache::sync_cache(&journal, &conn)?;
+            cache::find_entry_by_title(&conn, title)
+        }
+    }
+}
+
+fn open_journal_for_resolve(journal_dir: Option<&Path>) -> Result<Journal> {
+    if let Some(dir) = journal_dir {
+        Journal::from_root(dir.to_path_buf())
+    } else {
+        Journal::find()
     }
 }
 

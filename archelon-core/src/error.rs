@@ -20,6 +20,18 @@ pub enum Error {
     #[error("id prefix `{0}` is ambiguous ({1} matches)")]
     AmbiguousId(String, usize),
 
+    #[error("no entry found with title `{0}`")]
+    EntryNotFoundByTitle(String),
+
+    #[error("title `{0}` is ambiguous ({1} matches)")]
+    AmbiguousTitle(String, usize),
+
+    #[error("duplicate title `{0}` — set duplicate_title = \"allow\" in config to permit this")]
+    DuplicateTitle(String),
+
+    #[error("duplicate id `{0}` found in files: {1} and {2}")]
+    DuplicateId(String, String, String),
+
     #[error("{0} already exists")]
     EntryAlreadyExists(String),
 
