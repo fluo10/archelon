@@ -229,7 +229,32 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
 
     let mut entry_changed = false;
 
-    conn.execute_batch("BEGIN")?;
+    // Defer FK checks to commit time so children can be inserted before their
+    // parents (e.g. when syncing a journal from scratch or after a Syncthing
+    // propagation that delivers files out of topological order).
+    conn.execute_batch("PRAGMA defer_foreign_keys=ON; BEGIN")?;
+
+    // ── delete files removed from disk ───────────────────────────────────────
+    // Process deletions first so that renamed files (old path gone, new path
+    // present) are cleaned up before the upsert loop runs.  Without this
+    // ordering the duplicate-ID check below would fire on the stale cache row
+    // that still holds the same ID as the renamed file's new path.
+    for db_path in db_files.keys() {
+        if !disk_paths.contains(db_path.as_str()) {
+            let was_entry = conn
+                .query_row(
+                    "SELECT 1 FROM entries WHERE path = ?1",
+                    [db_path.as_str()],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            // Deleting from `files` cascades to `entries` and then `tags`.
+            conn.execute("DELETE FROM files WHERE path = ?1", [db_path])?;
+            if was_entry {
+                entry_changed = true;
+            }
+        }
+    }
 
     // ── upsert new / modified files ──────────────────────────────────────────
     for (path, mtime) in &disk_files {
@@ -277,24 +302,6 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
                     )?;
                     eprintln!("warn: {}: {e}", path.display());
                 }
-            }
-        }
-    }
-
-    // ── delete files removed from disk ───────────────────────────────────────
-    for db_path in db_files.keys() {
-        if !disk_paths.contains(db_path.as_str()) {
-            let was_entry = conn
-                .query_row(
-                    "SELECT 1 FROM entries WHERE path = ?1",
-                    [db_path.as_str()],
-                    |_| Ok(()),
-                )
-                .is_ok();
-            // Deleting from `files` cascades to `entries` and then `tags`.
-            conn.execute("DELETE FROM files WHERE path = ?1", [db_path])?;
-            if was_entry {
-                entry_changed = true;
             }
         }
     }
