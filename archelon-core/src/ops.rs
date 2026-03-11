@@ -10,6 +10,7 @@ use indexmap::IndexMap;
 
 use caretta_id::CarettaId;
 use chrono::{Datelike as _, NaiveDateTime};
+use rusqlite::Connection;
 
 use crate::{
     cache,
@@ -433,10 +434,17 @@ fn cmp_opt<T: Ord>(a: Option<T>, b: Option<T>) -> Ordering {
 
 /// Parsed frontmatter fields used for creating or updating an entry.
 ///
-/// All fields are optional. `title` is passed separately to [`create_entry`]
-/// (required) and [`update_entry`] (optional).
+/// All fields are optional.  For [`create_entry`], `title` defaults to an
+/// empty string when `None`; `body` defaults to empty.  For [`update_entry`],
+/// `None` means "leave unchanged".
 #[derive(Debug, Default)]
 pub struct EntryFields {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    /// Parent entry reference.  Resolved to a `CarettaId` via the cache at
+    /// write time.  `None` means "leave parent unchanged" in update; "no
+    /// parent" in create.
+    pub parent: Option<EntryRef>,
     pub slug: Option<String>,
     /// `None` = leave tags unchanged; `Some([])` = clear all tags.
     pub tags: Option<Vec<String>>,
@@ -450,18 +458,45 @@ pub struct EntryFields {
 
 // ── create ────────────────────────────────────────────────────────────────────
 
-/// Create a new entry in `journal` with the given `title`, `body`, and `fields`.
+/// Create a new entry in `journal` with the given `fields`.
 ///
-/// Returns the path of the newly created file.
-/// Fails with [`Error::EntryAlreadyExists`] if the destination already exists.
-pub fn create_entry(
-    journal: &Journal,
-    title: &str,
-    body: String,
-    fields: EntryFields,
-) -> Result<PathBuf> {
+/// `fields.title` defaults to `""` when `None`; `fields.body` defaults to `""`.
+///
+/// Fails with:
+/// - [`Error::DuplicateTitle`] if another entry already has the same title.
+/// - [`Error::DuplicateId`] if the generated ID already exists in the cache
+///   (extremely rare in practice).
+/// - [`Error::EntryAlreadyExists`] if the destination file already exists on disk.
+/// - [`Error::EntryNotFound`] / [`Error::EntryNotFoundByTitle`] if `fields.parent`
+///   cannot be resolved.
+pub fn create_entry(journal: &Journal, conn: &Connection, fields: EntryFields) -> Result<PathBuf> {
     let id = CarettaId::now_unix();
     let year = chrono::Local::now().year();
+
+    let title = fields.title.unwrap_or_default();
+    let body = fields.body.unwrap_or_default();
+
+    // ── duplicate title check ──────────────────────────────────────────────
+    if !title.is_empty() {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM entries WHERE title = ?1",
+            [&title],
+            |row| row.get(0),
+        )?;
+        if count > 0 {
+            return Err(Error::DuplicateTitle(title));
+        }
+    }
+
+    // ── duplicate ID check (rare; IDs are time-based) ──────────────────────
+    let id_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entries WHERE id = ?1", [id], |row| row.get(0))?;
+    if id_count > 0 {
+        return Err(Error::DuplicateId(id.to_string(), "<new>".to_owned(), "<cache>".to_owned()));
+    }
+
+    // ── resolve parent ─────────────────────────────────────────────────────
+    let parent_id = resolve_parent_id(conn, fields.parent.as_ref())?;
 
     let tags = fields.tags.unwrap_or_default();
 
@@ -495,8 +530,8 @@ pub fn create_entry(
     let now = chrono::Local::now().naive_local();
     let frontmatter = Frontmatter {
         id,
-        parent_id: None,
-        title: title.to_owned(),
+        parent_id,
+        title,
         slug: fields.slug.unwrap_or_default(),
         tags,
         created_at: now,
@@ -527,14 +562,32 @@ pub fn create_entry(
 /// `updated_at` is refreshed automatically by [`write_entry`].
 /// If the title or slug changed, the file is also renamed to match the new
 /// canonical filename.  Returns `Some(new_path)` when renamed, `None` otherwise.
-pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fields: EntryFields) -> Result<Option<PathBuf>> {
+///
+/// Fails with [`Error::DuplicateTitle`] if another entry already uses the new
+/// title.  Fails with [`Error::EntryNotFound`] / [`Error::EntryNotFoundByTitle`]
+/// if `fields.parent` cannot be resolved.
+pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Result<Option<PathBuf>> {
     let mut entry = read_entry(path)?;
 
-    if let Some(t) = title {
+    if let Some(t) = fields.title {
+        // ── duplicate title check (exclude current entry) ──────────────────
+        if t != entry.frontmatter.title && !t.is_empty() {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM entries WHERE title = ?1 AND id != ?2",
+                rusqlite::params![t, entry.frontmatter.id],
+                |row| row.get(0),
+            )?;
+            if count > 0 {
+                return Err(Error::DuplicateTitle(t));
+            }
+        }
         entry.frontmatter.title = t;
     }
-    if let Some(b) = body {
+    if let Some(b) = fields.body {
         entry.body = b;
+    }
+    if let Some(parent_ref) = fields.parent.as_ref() {
+        entry.frontmatter.parent_id = Some(resolve_parent_id(conn, Some(parent_ref))?.unwrap());
     }
     if let Some(s) = fields.slug {
         entry.frontmatter.slug = s;
@@ -594,6 +647,21 @@ pub fn update_entry(path: &Path, title: Option<String>, body: Option<String>, fi
     fix_entry_mut(&mut entry, true)
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Resolve an optional [`EntryRef`] to the corresponding `CarettaId` by looking
+/// up the entry in the cache.  Returns `Ok(None)` when `parent` is `None`.
+fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result<Option<CarettaId>> {
+    match parent {
+        None => Ok(None),
+        Some(EntryRef::Id(id)) => Ok(Some(*id)),
+        Some(EntryRef::Path(path)) => Ok(Some(read_entry(path)?.frontmatter.id)),
+        Some(EntryRef::Title(title)) => {
+            Ok(Some(cache::find_entry_by_title(conn, title)?.frontmatter.id))
+        }
+    }
+}
+
 // ── prepare new (for editor workflow) ─────────────────────────────────────────
 
 /// Create a new entry file with a frontmatter template in the journal's year directory.
@@ -647,13 +715,13 @@ pub fn resolve_entry(entry_ref: &EntryRef, journal_dir: Option<&Path>) -> Result
             let journal = open_journal_for_resolve(journal_dir)?;
             let conn = cache::open_cache(&journal)?;
             cache::sync_cache(&journal, &conn)?;
-            cache::find_entry_by_id(&conn, id)
+            cache::find_entry_by_id(&conn, *id).map(|e| e.path)
         }
         EntryRef::Title(title) => {
             let journal = open_journal_for_resolve(journal_dir)?;
             let conn = cache::open_cache(&journal)?;
             cache::sync_cache(&journal, &conn)?;
-            cache::find_entry_by_title(&conn, title)
+            cache::find_entry_by_title(&conn, title).map(|e| e.path)
         }
     }
 }
