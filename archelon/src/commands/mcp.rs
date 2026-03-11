@@ -123,9 +123,11 @@ struct EntryShowParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct EntryNewParams {
     /// Title of the entry — written into the frontmatter and used to generate the filename slug
-    title: String,
+    title: Option<String>,
     /// Body content (Markdown)
-    body: String,
+    body: Option<String>,
+    /// Parent entry — accepts `@ID`, a file path, or an exact title
+    parent: Option<String>,
     /// Slug override in the frontmatter
     slug: Option<String>,
     /// Tags as comma-separated string (e.g. "work,project")
@@ -152,6 +154,8 @@ struct EntrySetParams {
     title: Option<String>,
     /// New body content (Markdown). Replaces the existing body.
     body: Option<String>,
+    /// New parent entry — accepts `@ID`, a file path, or an exact title
+    parent: Option<String>,
     /// New slug override
     slug: Option<String>,
     /// New tags as comma-separated string. Pass empty string to clear all tags.
@@ -204,6 +208,9 @@ fn parse_entry_fields(
     event_end: Option<&str>,
 ) -> anyhow::Result<EntryFields> {
     Ok(EntryFields {
+        title: None,
+        body: None,
+        parent: None,
         slug,
         tags: tags.as_deref().map(|s| {
             s.split(',')
@@ -446,7 +453,16 @@ impl ArchelonServer {
                 p.event_start.as_deref(),
                 p.event_end.as_deref(),
             )?;
-            let dest = ops::create_entry(&journal, &p.title, p.body, fields)?;
+            let conn = cache::open_cache(&journal)?;
+            cache::sync_cache(&journal, &conn)?;
+            let fields = EntryFields {
+                title: p.title,
+                body: p.body,
+                parent: p.parent.as_deref().map(EntryRef::parse),
+                ..fields
+            };
+            let dest = ops::create_entry(&journal, &conn, fields)?;
+            let _ = cache::upsert_entry_from_path(&conn, &dest);
             Ok(format!("created: {}", dest.display()))
         })()
         .map_err(|e| e.to_string())
@@ -480,9 +496,20 @@ impl ArchelonServer {
                 p.event_start.as_deref(),
                 p.event_end.as_deref(),
             )?;
-            let msg = if let Some(new_path) = ops::update_entry(&path, p.title, p.body, fields)? {
+            let journal = self.open_journal()?;
+            let conn = cache::open_cache(&journal)?;
+            cache::sync_cache(&journal, &conn)?;
+            let fields = EntryFields {
+                title: p.title,
+                body: p.body,
+                parent: p.parent.as_deref().map(EntryRef::parse),
+                ..fields
+            };
+            let msg = if let Some(new_path) = ops::update_entry(&path, &conn, fields)? {
+                let _ = cache::upsert_entry_from_path(&conn, &new_path);
                 format!("updated and renamed: {}", new_path.display())
             } else {
+                let _ = cache::upsert_entry_from_path(&conn, &path);
                 format!("updated: {}", path.display())
             };
             Ok(msg)

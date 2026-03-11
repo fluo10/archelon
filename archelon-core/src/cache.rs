@@ -343,58 +343,23 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Look up an entry by ID string.
+/// Look up an entry by its [`CarettaId`].
 ///
-/// - **Full 7-char ID**: parsed as `CarettaId` and looked up by INTEGER primary key.
-/// - **Prefix (< 7 chars)**: all IDs are fetched and filtered client-side.
-///   This is a transitional fallback; the preferred UX is autocomplete over the
-///   full ID list rather than server-side prefix queries.
-///
-/// If a stored path no longer exists on disk, the stale row is removed and
+/// If the stored path no longer exists on disk, the stale row is removed and
 /// [`Error::EntryNotFound`] is returned.
-pub fn find_entry_by_id(conn: &Connection, id_input: &str) -> Result<PathBuf> {
-    // Fast path: full CarettaId → exact INTEGER lookup.
-    if let Ok(id) = id_input.parse::<CarettaId>() {
-        return match conn.query_row(
-            "SELECT path FROM entries WHERE id = ?1",
-            [id],
-            |row| row.get::<_, String>(0),
-        ) {
-            Ok(path_str) => {
-                let path = PathBuf::from(&path_str);
-                if !path.exists() {
-                    conn.execute("DELETE FROM entries WHERE id = ?1", [id])?;
-                    return Err(Error::EntryNotFound(id_input.to_owned()));
-                }
-                Ok(path)
+pub fn find_entry_by_id(conn: &Connection, id: CarettaId) -> Result<crate::entry::Entry> {
+    match fetch_full_entry(conn, id) {
+        Ok(entry) => {
+            if !entry.path.exists() {
+                conn.execute("DELETE FROM entries WHERE id = ?1", [id])?;
+                return Err(Error::EntryNotFound(id.to_string()));
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                Err(Error::EntryNotFound(id_input.to_owned()))
-            }
-            Err(e) => Err(Error::Cache(e)),
-        };
-    }
-
-    // Prefix fallback: client-side filtering over all IDs.
-    let mut stmt = conn.prepare("SELECT id, path FROM entries")?;
-    let matches: Vec<(CarettaId, String)> = stmt
-        .query_map([], |row| Ok((row.get::<_, CarettaId>(0)?, row.get::<_, String>(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-        .into_iter()
-        .filter(|(id, _)| id.to_string().starts_with(id_input))
-        .collect();
-
-    match matches.len() {
-        0 => Err(Error::EntryNotFound(id_input.to_owned())),
-        1 => {
-            let path = PathBuf::from(&matches[0].1);
-            if !path.exists() {
-                conn.execute("DELETE FROM entries WHERE id = ?1", [matches[0].0])?;
-                return Err(Error::EntryNotFound(id_input.to_owned()));
-            }
-            Ok(path)
+            Ok(entry)
         }
-        n => Err(Error::AmbiguousId(id_input.to_owned(), n)),
+        Err(Error::Cache(rusqlite::Error::QueryReturnedNoRows)) => {
+            Err(Error::EntryNotFound(id.to_string()))
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -405,21 +370,24 @@ pub fn find_entry_by_id(conn: &Connection, id_input: &str) -> Result<PathBuf> {
 ///
 /// If the matched path no longer exists on disk the stale row is removed and
 /// [`Error::EntryNotFoundByTitle`] is returned.
-pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<PathBuf> {
-    let mut stmt = conn.prepare("SELECT path FROM entries WHERE title = ?1")?;
-    let paths: Vec<String> = stmt
-        .query_map([title], |row| row.get::<_, String>(0))?
+pub fn find_entry_by_title(
+    conn: &Connection,
+    title: &str,
+) -> Result<crate::entry::Entry> {
+    let mut stmt = conn.prepare("SELECT id, path FROM entries WHERE title = ?1")?;
+    let rows: Vec<(CarettaId, String)> = stmt
+        .query_map([title], |row| Ok((row.get::<_, CarettaId>(0)?, row.get::<_, String>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    match paths.len() {
+    match rows.len() {
         0 => Err(Error::EntryNotFoundByTitle(title.to_owned())),
         1 => {
-            let path = PathBuf::from(&paths[0]);
-            if !path.exists() {
-                conn.execute("DELETE FROM files WHERE path = ?1", [&paths[0]])?;
+            let (id, path_str) = rows.into_iter().next().unwrap();
+            if !PathBuf::from(&path_str).exists() {
+                conn.execute("DELETE FROM files WHERE path = ?1", [&path_str])?;
                 return Err(Error::EntryNotFoundByTitle(title.to_owned()));
             }
-            Ok(path)
+            fetch_full_entry(conn, id)
         }
         n => Err(Error::AmbiguousTitle(title.to_owned(), n)),
     }
@@ -591,6 +559,95 @@ pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
 }
 
 // ── internals ─────────────────────────────────────────────────────────────────
+
+/// Fetch a single entry (all columns + tags) from the cache by its numeric ID.
+///
+/// Returns `Error::Cache(QueryReturnedNoRows)` if no row exists.
+fn fetch_full_entry(
+    conn: &Connection,
+    id: CarettaId,
+) -> Result<crate::entry::Entry> {
+    use chrono::NaiveDateTime;
+    use indexmap::IndexMap;
+    use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
+
+    let (parent_id, path_str, title, slug, created_at, updated_at,
+         is_task, task_status, task_due, task_started_at, task_closed_at,
+         is_event, event_start, event_end, body) = conn.query_row(
+        "SELECT parent_id, path, title, slug, created_at, updated_at,
+                is_task, task_status, task_due, task_started_at, task_closed_at,
+                is_event, event_start, event_end, body
+         FROM entries WHERE id = ?1",
+        [id],
+        |row| {
+            Ok((
+                row.get::<_, Option<CarettaId>>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i32>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, i32>(11)?,
+                row.get::<_, Option<String>>(12)?,
+                row.get::<_, Option<String>>(13)?,
+                row.get::<_, String>(14)?,
+            ))
+        },
+    )?;
+
+    let mut tags_stmt = conn.prepare("SELECT tag FROM tags WHERE entry_id = ?1 ORDER BY tag")?;
+    let tags: Vec<String> = tags_stmt
+        .query_map([id], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let parse_dt = |s: &str| {
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default()
+    };
+    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+        s.as_deref().and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+    };
+
+    let task = if is_task != 0 {
+        Some(TaskMeta {
+            status: task_status.unwrap_or_else(|| "open".to_owned()),
+            due: parse_dt_opt(task_due),
+            started_at: parse_dt_opt(task_started_at),
+            closed_at: parse_dt_opt(task_closed_at),
+            extra: IndexMap::new(),
+        })
+    } else {
+        None
+    };
+
+    let event = if is_event != 0 {
+        match (parse_dt_opt(event_start), parse_dt_opt(event_end)) {
+            (Some(start), Some(end)) => Some(EventMeta { start, end, extra: IndexMap::new() }),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let frontmatter = Frontmatter {
+        id,
+        parent_id,
+        title,
+        slug,
+        tags,
+        created_at: parse_dt(&created_at),
+        updated_at: parse_dt(&updated_at),
+        task,
+        event,
+        extra: IndexMap::new(),
+    };
+
+    Ok(Entry { path: PathBuf::from(path_str), frontmatter, body })
+}
 
 fn collect_with_mtime(journal: &Journal) -> Result<Vec<(PathBuf, i64)>> {
     let paths = journal.collect_entries()?;

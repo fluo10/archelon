@@ -189,6 +189,10 @@ pub struct EntryFields {
     #[arg(long, short)]
     pub body: Option<String>,
 
+    /// Parent entry — accepts `@ID`, a file path, or a title.
+    #[arg(long, value_name = "ENTRY")]
+    pub parent: Option<String>,
+
     /// Slug override in the frontmatter
     #[arg(long)]
     pub slug: Option<String>,
@@ -225,6 +229,9 @@ pub struct EntryFields {
 impl From<EntryFields> for CoreEntryFields {
     fn from(f: EntryFields) -> Self {
         Self {
+            title: f.title,
+            body: f.body,
+            parent: f.parent.as_deref().map(EntryRef::parse),
             slug: f.slug,
             tags: f.tags,
             task_due: f.task_due,
@@ -462,12 +469,10 @@ fn show(path: &Path) -> Result<()> {
 
 fn new(journal_dir: Option<&Path>, fields: EntryFields) -> Result<()> {
     let journal = open_journal(journal_dir)?;
-    let title = fields.title.clone().unwrap_or_default();
-    let body = fields.body.clone().unwrap_or_default();
-    let dest = ops::create_entry(&journal, &title, body, fields.into())?;
-    if let Ok(conn) = cache::open_cache(&journal) {
-        let _ = cache::upsert_entry_from_path(&conn, &dest);
-    }
+    let conn = cache::open_cache(&journal)?;
+    cache::sync_cache(&journal, &conn)?;
+    let dest = ops::create_entry(&journal, &conn, fields.into())?;
+    let _ = cache::upsert_entry_from_path(&conn, &dest);
     println!("created: {}", dest.display());
     Ok(())
 }
@@ -527,6 +532,7 @@ fn edit_new(journal_dir: Option<&Path>) -> Result<()> {
 fn set(journal_dir: Option<&Path>, path: &Path, fields: EntryFields) -> Result<()> {
     if fields.title.is_none()
         && fields.body.is_none()
+        && fields.parent.is_none()
         && fields.slug.is_none()
         && fields.tags.is_none()
         && fields.task_due.is_none()
@@ -538,16 +544,12 @@ fn set(journal_dir: Option<&Path>, path: &Path, fields: EntryFields) -> Result<(
     {
         bail!("nothing to update — specify at least one field");
     }
-    let _ = journal_dir; // reserved for future use
-    let title = fields.title.clone();
-    let body = fields.body.clone();
-    let new_path_opt = ops::update_entry(path, title, body, fields.into())?;
+    let journal = open_journal(journal_dir)?;
+    let conn = cache::open_cache(&journal)?;
+    cache::sync_cache(&journal, &conn)?;
+    let new_path_opt = ops::update_entry(path, &conn, fields.into())?;
     let final_path = new_path_opt.as_deref().unwrap_or(path);
-    if let Ok(journal) = open_journal(journal_dir) {
-        if let Ok(conn) = cache::open_cache(&journal) {
-            let _ = cache::upsert_entry_from_path(&conn, final_path);
-        }
-    }
+    let _ = cache::upsert_entry_from_path(&conn, final_path);
     if let Some(new_path) = new_path_opt {
         println!("updated and renamed: {}", new_path.display());
     } else {

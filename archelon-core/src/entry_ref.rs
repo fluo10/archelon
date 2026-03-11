@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use caretta_id::CarettaId;
+
 /// A reference to a journal entry — a filesystem path, a CarettaId, or a title.
 ///
 /// This is the canonical input type for commands that operate on a single entry
@@ -10,20 +12,22 @@ use std::path::PathBuf;
 ///
 /// | Input form              | Resolved as     |
 /// |-------------------------|-----------------|
-/// | `@abc1234`              | `Id("abc1234")` |
+/// | `@abc1234`              | `Id(CarettaId)` |
 /// | `path/to/file.md`       | `Path(...)`     |
 /// | `./relative.md`         | `Path(...)`     |
 /// | `~/absolute.md`         | `Path(...)`     |
 /// | `anything_else`         | `Title(...)`    |
 ///
 /// The `@` prefix is required for IDs to avoid ambiguity with titles that
-/// happen to be 7 alphanumeric characters.
+/// happen to be 7 alphanumeric characters.  If the part after `@` cannot be
+/// parsed as a valid [`CarettaId`], the `@` is treated as part of the string
+/// and the usual path/title heuristics apply.
 #[derive(Debug, Clone)]
 pub enum EntryRef {
     /// A filesystem path to the entry file.
     Path(PathBuf),
-    /// A CarettaId (the `@` prefix has been stripped).
-    Id(String),
+    /// A fully-parsed CarettaId (the `@` prefix has been stripped and validated).
+    Id(CarettaId),
     /// An exact entry title (case-sensitive).
     Title(String),
 }
@@ -31,13 +35,18 @@ pub enum EntryRef {
 impl EntryRef {
     /// Classify a raw CLI string as a path, an ID, or a title.
     ///
-    /// - Starts with `@` → [`EntryRef::Id`] (prefix stripped).
+    /// - Starts with `@` **and** the remainder parses as a [`CarettaId`]
+    ///   → [`EntryRef::Id`].
     /// - Contains `/` or `\`, starts with `.` or `~`, or ends with `.md`
     ///   → [`EntryRef::Path`].
-    /// - Anything else → [`EntryRef::Title`].
+    /// - Anything else (including `@foo` where `foo` is not a valid CarettaId)
+    ///   → [`EntryRef::Title`].
     pub fn parse(s: &str) -> Self {
-        if let Some(id) = s.strip_prefix('@') {
-            return EntryRef::Id(id.to_owned());
+        if let Some(rest) = s.strip_prefix('@') {
+            if let Ok(id) = rest.parse::<CarettaId>() {
+                return EntryRef::Id(id);
+            }
+            // Invalid CarettaId after `@` — fall through to path/title heuristics.
         }
         if s.contains('/')
             || s.contains(std::path::MAIN_SEPARATOR)
