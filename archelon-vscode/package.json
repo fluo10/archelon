@@ -19,10 +19,59 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "archelon",
+          "title": "Archelon",
+          "icon": "media/archelon.svg"
+        }
+      ]
+    },
+    "views": {
+      "archelon": [
+        {
+          "id": "archelon.entries",
+          "name": "Entries"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "archelon.newEntry",
+          "when": "view == archelon.entries",
+          "group": "navigation@1"
+        },
+        {
+          "command": "archelon.filterTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@2"
+        },
+        {
+          "command": "archelon.refreshTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "archelon.newChildEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "inline@1"
+        },
+        {
+          "command": "archelon.removeEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "inline@2"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "archelon.newEntry",
-        "title": "Archelon: New Entry"
+        "title": "Archelon: New Entry",
+        "icon": "$(add)"
       },
       {
         "command": "archelon.openEntry",
@@ -30,11 +79,27 @@
       },
       {
         "command": "archelon.removeEntry",
-        "title": "Archelon: Remove Entry"
+        "title": "Archelon: Remove Entry",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "archelon.newChildEntry",
+        "title": "Archelon: New Child Entry",
+        "icon": "$(type-hierarchy-sub)"
       },
       {
         "command": "archelon.listEntries",
         "title": "Archelon: List Entries"
+      },
+      {
+        "command": "archelon.refreshTree",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "archelon.filterTree",
+        "title": "Filter Entries",
+        "icon": "$(filter)"
       }
     ],
     "configuration": {

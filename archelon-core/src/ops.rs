@@ -651,7 +651,7 @@ pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Resu
 
 /// Resolve an optional [`EntryRef`] to the corresponding `CarettaId` by looking
 /// up the entry in the cache.  Returns `Ok(None)` when `parent` is `None`.
-fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result<Option<CarettaId>> {
+pub fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result<Option<CarettaId>> {
     match parent {
         None => Ok(None),
         Some(EntryRef::Id(id)) => Ok(Some(*id)),
@@ -669,7 +669,9 @@ fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result<Opt
 /// The file is named `<id>.md` with required frontmatter pre-filled and optional
 /// fields commented out.  The caller should open an editor on the returned path
 /// and then call [`fix_entry`] to rename the file once the user has set a title.
-pub fn prepare_new_entry(journal: &Journal) -> Result<PathBuf> {
+///
+/// When `parent_id` is `Some`, the `parent_id` field is included in the frontmatter.
+pub fn prepare_new_entry(journal: &Journal, parent_id: Option<CarettaId>) -> Result<PathBuf> {
     let id = CarettaId::now_unix();
     let year = chrono::Local::now().year();
     let now = chrono::Local::now().naive_local();
@@ -680,9 +682,15 @@ pub fn prepare_new_entry(journal: &Journal) -> Result<PathBuf> {
 
     let path = dir.join(format!("{id}.md"));
 
+    let parent_line = match parent_id {
+        Some(pid) => format!("parent_id: '{pid}'\n"),
+        None => String::new(),
+    };
+
     let template = format!(
         "---\n\
          id: '{id}'\n\
+         {parent_line}\
          title: ''\n\
          created_at: {now_fmt}\n\
          updated_at: {now_fmt}\n\

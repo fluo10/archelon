@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath } from './cli';
+import { EntryItem, EntryTreeProvider } from './entryTreeProvider';
 import { findJournalRoot, isManagedFilename } from './journal';
 
 /** Return a cwd suitable for CLI calls: active file's dir if inside a journal, else workspace root. */
@@ -14,6 +15,34 @@ function getJournalCwd(): string | null {
 
 export function activate(context: vscode.ExtensionContext) {
     setExtensionPath(context.extensionPath);
+
+    // ── Tree View: Entries ────────────────────────────────────────────────────
+    const treeProvider = new EntryTreeProvider();
+    const treeView = vscode.window.createTreeView('archelon.entries', {
+        treeDataProvider: treeProvider,
+        showCollapseAll: false,
+    });
+    context.subscriptions.push(treeView);
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.refreshTree', () => {
+            treeProvider.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.filterTree', async () => {
+            const current = treeProvider.filter;
+            const input = await vscode.window.showInputBox({
+                prompt: 'Filter entries by title, tag, or ID (leave empty to clear)',
+                value: current,
+                placeHolder: 'e.g. journal  or  #work',
+            });
+            if (input === undefined) { return; }
+            treeProvider.setFilter(input);
+            treeView.title = input ? `Entries: ${input}` : 'Entries';
+        })
+    );
 
     // ── Command: New Entry ────────────────────────────────────────────────────
     context.subscriptions.push(
@@ -29,6 +58,25 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.window.showTextDocument(doc);
             } catch (err) {
                 vscode.window.showErrorMessage(`Archelon: failed to create entry — ${err}`);
+            }
+        })
+    );
+
+    // ── Command: New Child Entry ──────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.newChildEntry', async (item?: EntryItem) => {
+            const cwd = getJournalCwd();
+            if (!cwd) {
+                vscode.window.showErrorMessage('Archelon: no workspace folder open.');
+                return;
+            }
+            const parentId = item?.record.id;
+            try {
+                const filePath = await prepareNewEntry(cwd, parentId);
+                const doc = await vscode.workspace.openTextDocument(filePath);
+                await vscode.window.showTextDocument(doc);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Archelon: failed to create child entry — ${err}`);
             }
         })
     );
@@ -159,7 +207,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── On save: entry fix --touch ────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(async (doc) => {
+        vscode.workspace.onDidSaveTextDocument(async (doc: vscode.TextDocument) => {
             const cfg = vscode.workspace.getConfiguration('archelon');
             if (!cfg.get<boolean>('autoFixOnSave', true)) {
                 return;
@@ -175,6 +223,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             try {
                 const newPath = await fixEntry(filePath);
+                treeProvider.refresh();
                 if (newPath) {
                     // File was renamed: open new file and close old tabs.
                     const newDoc = await vscode.workspace.openTextDocument(newPath);

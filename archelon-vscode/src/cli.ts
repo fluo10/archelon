@@ -46,13 +46,18 @@ export async function fixEntry(filePath: string): Promise<string | null> {
 }
 
 /**
- * Run `archelon entry prepare` with the given working directory.
+ * Run `archelon entry path --new` with the given working directory.
+ *
+ * When `parentId` is provided, passes `--parent @<parentId>` so the new
+ * template file includes the parent_id frontmatter field.
  *
  * Returns the absolute path of the newly created template file.
  * Throws on non-zero exit (e.g. journal not found).
  */
-export async function prepareNewEntry(cwd: string): Promise<string> {
-    const { stdout } = await execFileAsync(bin(), ['entry', 'path', '--new'], { cwd });
+export async function prepareNewEntry(cwd: string, parentId?: string): Promise<string> {
+    const args = ['entry', 'path', '--new'];
+    if (parentId) { args.push('--parent', `@${parentId}`); }
+    const { stdout } = await execFileAsync(bin(), args, { cwd });
     return stdout.trim();
 }
 
