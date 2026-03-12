@@ -66,7 +66,7 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
     private _sortBy: SortField | undefined = undefined;
     private _sortOrder: SortOrder = 'asc';
     private _viewMode: ViewMode = 'tree';
-    private _period: string | undefined = undefined;
+    private _period: string | undefined = 'today';
     private _rootRecords: EntryRecord[] = [];
 
     get filter(): string { return this._filter; }
