@@ -197,6 +197,38 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // ── Command: Period Filter ────────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.setPeriod', async () => {
+            const presets: { label: string; period: string | undefined }[] = [
+                { label: '$(circle-slash) All (clear period filter)', period: undefined },
+                { label: '$(calendar) Today',      period: 'today' },
+                { label: '$(calendar) This week',  period: 'this_week' },
+                { label: '$(calendar) This month', period: 'this_month' },
+                { label: '$(edit) Custom date / range…', period: '__custom__' },
+            ];
+            const picked = await vscode.window.showQuickPick(presets, {
+                placeHolder: 'Filter entries by period…',
+            });
+            if (picked === undefined) { return; }
+
+            let period: string | undefined = picked.period;
+            if (period === '__custom__') {
+                const input = await vscode.window.showInputBox({
+                    prompt: 'Date (YYYY-MM-DD) or range (YYYY-MM-DD,YYYY-MM-DD)',
+                    placeHolder: '2026-03-12  or  2026-03-01,2026-03-31',
+                    value: treeProvider.period ?? '',
+                });
+                if (input === undefined) { return; }
+                period = input || undefined;
+            }
+
+            treeProvider.setPeriod(period);
+            const label = period ? `Entries: ${period}` : 'Entries';
+            treeView.title = treeProvider.filter ? `${label}: ${treeProvider.filter}` : label;
+        })
+    );
+
     // ── Commands: Toggle View Mode (tree ↔ list) ──────────────────────────────
     const switchViewMode = (mode: 'tree' | 'list') => {
         if (treeProvider.viewMode !== mode) {

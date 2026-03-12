@@ -93,10 +93,11 @@ export interface EntryRecord {
  * Run `archelon entry list --json` and return parsed records.
  * Throws on non-zero exit (e.g. journal not found).
  */
-export async function listEntries(cwd: string, sortBy?: SortField, sortOrder?: SortOrder): Promise<EntryRecord[]> {
+export async function listEntries(cwd: string, sortBy?: SortField, sortOrder?: SortOrder, period?: string): Promise<EntryRecord[]> {
     const args = ['entry', 'list', '--json'];
     if (sortBy) { args.push('--sort-by', sortBy); }
     if (sortOrder) { args.push('--sort-order', sortOrder); }
+    if (period) { args.push('--period', period); }
     const { stdout } = await execFileAsync(bin(), args, { cwd });
     return JSON.parse(stdout) as EntryRecord[];
 }
@@ -108,10 +109,11 @@ export type SortOrder = 'asc' | 'desc';
  * Run `archelon entry tree --json` and return the nested tree.
  * Throws on non-zero exit (e.g. journal not found).
  */
-export async function treeEntries(cwd: string, sortBy?: SortField, sortOrder?: SortOrder): Promise<EntryRecord[]> {
+export async function treeEntries(cwd: string, sortBy?: SortField, sortOrder?: SortOrder, period?: string): Promise<EntryRecord[]> {
     const args = ['entry', 'tree', '--json'];
     if (sortBy) { args.push('--sort-by', sortBy); }
     if (sortOrder) { args.push('--sort-order', sortOrder); }
+    if (period) { args.push('--period', period); }
     const { stdout } = await execFileAsync(bin(), args, { cwd });
     return JSON.parse(stdout) as EntryRecord[];
 }

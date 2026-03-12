@@ -5,13 +5,25 @@ import { findJournalRoot } from './journal';
 
 export type ViewMode = 'tree' | 'list';
 
+function entryEmoji(record: EntryRecord): string {
+    if (record.event) { return '📅'; }
+    if (record.task) {
+        const s = record.task.status.toLowerCase();
+        if (s === 'done' || s === 'completed') { return '✅'; }
+        if (s === 'cancelled' || s === 'canceled') { return '❌'; }
+        if (s === 'in_progress' || s === 'wip') { return '🔄'; }
+        return '⬜';
+    }
+    return '📝';
+}
+
 export class EntryItem extends vscode.TreeItem {
     constructor(
         public readonly record: EntryRecord,
         public readonly children: EntryRecord[],
     ) {
         super(
-            record.title || '(untitled)',
+            `${entryEmoji(record)} ${record.title || '(untitled)'}`,
             children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None,
@@ -24,9 +36,7 @@ export class EntryItem extends vscode.TreeItem {
         };
 
         let desc = `@${record.id}`;
-        if (record.task) {
-            desc += ` [${record.task.status}]`;
-        } else if (record.event) {
+        if (record.event) {
             const span = record.event.start === record.event.end
                 ? record.event.start.slice(0, 10)
                 : `${record.event.start.slice(0, 10)} – ${record.event.end.slice(0, 10)}`;
@@ -65,12 +75,14 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
     private _sortBy: SortField | undefined = undefined;
     private _sortOrder: SortOrder = 'asc';
     private _viewMode: ViewMode = 'tree';
+    private _period: string | undefined = undefined;
     private _rootRecords: EntryRecord[] = [];
 
     get filter(): string { return this._filter; }
     get sortBy(): SortField | undefined { return this._sortBy; }
     get sortOrder(): SortOrder { return this._sortOrder; }
     get viewMode(): ViewMode { return this._viewMode; }
+    get period(): string | undefined { return this._period; }
 
     refresh(): void {
         this._rootRecords = [];
@@ -86,6 +98,12 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
     setSort(sortBy: SortField | undefined, sortOrder: SortOrder): void {
         this._sortBy = sortBy;
         this._sortOrder = sortOrder;
+        this._rootRecords = [];
+        this._onDidChangeTreeData.fire();
+    }
+
+    setPeriod(period: string | undefined): void {
+        this._period = period;
         this._rootRecords = [];
         this._onDidChangeTreeData.fire();
     }
@@ -112,9 +130,9 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
 
         try {
             if (this._viewMode === 'list') {
-                this._rootRecords = await listEntries(cwd, this._sortBy, this._sortOrder);
+                this._rootRecords = await listEntries(cwd, this._sortBy, this._sortOrder, this._period);
             } else {
-                this._rootRecords = await treeEntries(cwd, this._sortBy, this._sortOrder);
+                this._rootRecords = await treeEntries(cwd, this._sortBy, this._sortOrder, this._period);
             }
         } catch {
             return [];
