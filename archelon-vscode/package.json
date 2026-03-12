@@ -58,6 +58,16 @@
           "command": "archelon.refreshTree",
           "when": "view == archelon.entries",
           "group": "navigation@4"
+        },
+        {
+          "command": "archelon.showTreeView",
+          "when": "view == archelon.entries && archelon.viewMode == list",
+          "group": "navigation@5"
+        },
+        {
+          "command": "archelon.showListView",
+          "when": "view == archelon.entries && archelon.viewMode == tree",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -70,6 +80,16 @@
           "command": "archelon.removeEntry",
           "when": "view == archelon.entries && viewItem == entry",
           "group": "inline@2"
+        },
+        {
+          "command": "archelon.newChildEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "archelon.removeEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "1_modification@2"
         }
       ]
     },
@@ -111,6 +131,16 @@
         "command": "archelon.sortTree",
         "title": "Sort Entries",
         "icon": "$(list-ordered)"
+      },
+      {
+        "command": "archelon.showListView",
+        "title": "Archelon: Switch to List View",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "archelon.showTreeView",
+        "title": "Archelon: Switch to Tree View",
+        "icon": "$(list-tree)"
       }
     ],
     "configuration": {

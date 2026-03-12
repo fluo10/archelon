@@ -1,7 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EntryRecord, SortField, SortOrder, treeEntries } from './cli';
+import { EntryRecord, SortField, SortOrder, listEntries, treeEntries } from './cli';
 import { findJournalRoot } from './journal';
+
+export type ViewMode = 'tree' | 'list';
 
 export class EntryItem extends vscode.TreeItem {
     constructor(
@@ -29,8 +31,25 @@ export class EntryItem extends vscode.TreeItem {
                 : `${record.event.start.slice(0, 10)} – ${record.event.end.slice(0, 10)}`;
         }
 
-        const tagPart = record.tags.length > 0 ? `\nTags: #${record.tags.join(' #')}` : '';
-        this.tooltip = `${record.id}${tagPart}`;
+        const md = new vscode.MarkdownString();
+        md.appendMarkdown(`**ID:** \`${record.id}\`  \n`);
+        if (record.tags.length > 0) {
+            md.appendMarkdown(`**Tags:** ${record.tags.map(t => `\`#${t}\``).join(' ')}  \n`);
+        }
+        md.appendMarkdown(`**Updated:** ${record.updated_at.slice(0, 19).replace('T', ' ')}  \n`);
+        if (record.task) {
+            let taskLine = `**Task:** ${record.task.status}`;
+            if (record.task.due) { taskLine += ` (due: ${record.task.due.slice(0, 10)})`; }
+            if (record.task.closed_at) { taskLine += ` (closed: ${record.task.closed_at.slice(0, 10)})`; }
+            md.appendMarkdown(taskLine + `  \n`);
+        }
+        if (record.event) {
+            const span = record.event.start === record.event.end
+                ? record.event.start.slice(0, 10)
+                : `${record.event.start.slice(0, 10)} – ${record.event.end.slice(0, 10)}`;
+            md.appendMarkdown(`**Event:** ${span}  \n`);
+        }
+        this.tooltip = md;
         this.contextValue = 'entry';
     }
 }
@@ -42,11 +61,13 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
     private _filter = '';
     private _sortBy: SortField | undefined = undefined;
     private _sortOrder: SortOrder = 'asc';
+    private _viewMode: ViewMode = 'tree';
     private _rootRecords: EntryRecord[] = [];
 
     get filter(): string { return this._filter; }
     get sortBy(): SortField | undefined { return this._sortBy; }
     get sortOrder(): SortOrder { return this._sortOrder; }
+    get viewMode(): ViewMode { return this._viewMode; }
 
     refresh(): void {
         this._rootRecords = [];
@@ -66,20 +87,32 @@ export class EntryTreeProvider implements vscode.TreeDataProvider<EntryItem> {
         this._onDidChangeTreeData.fire();
     }
 
+    toggleViewMode(): ViewMode {
+        this._viewMode = this._viewMode === 'tree' ? 'list' : 'tree';
+        this._rootRecords = [];
+        this._onDidChangeTreeData.fire();
+        return this._viewMode;
+    }
+
     getTreeItem(element: EntryItem): vscode.TreeItem {
         return element;
     }
 
     async getChildren(element?: EntryItem): Promise<EntryItem[]> {
+        // In list mode, all entries are top-level (no children)
         if (element) {
-            return this._toItems(element.children);
+            return this._viewMode === 'tree' ? this._toItems(element.children) : [];
         }
 
         const cwd = this._getCwd();
         if (!cwd) { return []; }
 
         try {
-            this._rootRecords = await treeEntries(cwd, this._sortBy, this._sortOrder);
+            if (this._viewMode === 'list') {
+                this._rootRecords = await listEntries(cwd, this._sortBy, this._sortOrder);
+            } else {
+                this._rootRecords = await treeEntries(cwd, this._sortBy, this._sortOrder);
+            }
         } catch {
             return [];
         }

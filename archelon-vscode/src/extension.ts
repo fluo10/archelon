@@ -15,6 +15,7 @@ function getJournalCwd(): string | null {
 
 export function activate(context: vscode.ExtensionContext) {
     setExtensionPath(context.extensionPath);
+    vscode.commands.executeCommand('setContext', 'archelon.viewMode', 'tree');
 
     // ── Tree View: Entries ────────────────────────────────────────────────────
     const treeProvider = new EntryTreeProvider();
@@ -139,20 +140,30 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Command: Remove Entry ─────────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('archelon.removeEntry', async () => {
-            // Default to the active file if it is a managed entry; otherwise ask for an ID.
-            const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
-            let entryArg: string | undefined;
+        vscode.commands.registerCommand('archelon.removeEntry', async (item?: EntryItem) => {
+            let entryArg: string;
+            let cwd: string;
 
-            if (activeFile && isManagedFilename(activeFile) && findJournalRoot(activeFile)) {
-                entryArg = activeFile;
+            if (item) {
+                // Invoked from tree context menu
+                entryArg = item.record.path;
+                cwd = path.dirname(entryArg);
             } else {
-                entryArg = await vscode.window.showInputBox({
-                    prompt: 'Entry ID (or ID prefix) to remove',
-                    placeHolder: '1a2b3c4',
-                });
+                // Default to the active file if it is a managed entry; otherwise ask for an ID.
+                const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+                let arg: string | undefined;
+                if (activeFile && isManagedFilename(activeFile) && findJournalRoot(activeFile)) {
+                    arg = activeFile;
+                } else {
+                    arg = await vscode.window.showInputBox({
+                        prompt: 'Entry ID (or ID prefix) to remove',
+                        placeHolder: '1a2b3c4',
+                    });
+                }
+                if (!arg) { return; }
+                entryArg = arg;
+                cwd = getJournalCwd() ?? path.dirname(entryArg);
             }
-            if (!entryArg) { return; }
 
             const label = path.basename(entryArg);
             const answer = await vscode.window.showWarningMessage(
@@ -162,7 +173,6 @@ export function activate(context: vscode.ExtensionContext) {
             );
             if (answer !== 'Remove') { return; }
 
-            const cwd = getJournalCwd() ?? path.dirname(entryArg);
             try {
                 // Close open tabs for the file before deleting it.
                 const targetPath = entryArg.includes(path.sep)
@@ -179,11 +189,26 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 await removeEntry(entryArg, cwd);
+                treeProvider.refresh();
                 vscode.window.showInformationMessage(`Archelon: removed ${label}`);
             } catch (err) {
                 vscode.window.showErrorMessage(`Archelon: remove failed — ${err}`);
             }
         })
+    );
+
+    // ── Commands: Toggle View Mode (tree ↔ list) ──────────────────────────────
+    const switchViewMode = (mode: 'tree' | 'list') => {
+        if (treeProvider.viewMode !== mode) {
+            treeProvider.toggleViewMode();
+        }
+        vscode.commands.executeCommand('setContext', 'archelon.viewMode', mode);
+    };
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.showListView', () => switchViewMode('list'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.showTreeView', () => switchViewMode('tree'))
     );
 
     // ── Command: List Entries ─────────────────────────────────────────────────
