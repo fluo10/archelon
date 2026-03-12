@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath } from './cli';
+import { fixEntry, listEntries, prepareNewEntry, removeEntry, resolvePath, setExtensionPath, SortField, SortOrder } from './cli';
+import { EntryItem, EntryTreeProvider } from './entryTreeProvider';
 import { findJournalRoot, isManagedFilename } from './journal';
 
 /** Return a cwd suitable for CLI calls: active file's dir if inside a journal, else workspace root. */
@@ -14,6 +15,67 @@ function getJournalCwd(): string | null {
 
 export function activate(context: vscode.ExtensionContext) {
     setExtensionPath(context.extensionPath);
+    vscode.commands.executeCommand('setContext', 'archelon.viewMode', 'tree');
+
+    // ── Tree View: Entries ────────────────────────────────────────────────────
+    const treeProvider = new EntryTreeProvider();
+    const treeView = vscode.window.createTreeView('archelon.entries', {
+        treeDataProvider: treeProvider,
+        showCollapseAll: false,
+    });
+    context.subscriptions.push(treeView);
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.refreshTree', () => {
+            treeProvider.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.sortTree', async () => {
+            const fields: { label: string; field: SortField | undefined }[] = [
+                { label: '$(circle-slash) Default (none)', field: undefined },
+                { label: 'ID',           field: 'id' },
+                { label: 'Title',        field: 'title' },
+                { label: 'Updated at',   field: 'updated_at' },
+                { label: 'Created at',   field: 'created_at' },
+                { label: 'Task status',  field: 'task_status' },
+                { label: 'Task due',     field: 'task_due' },
+                { label: 'Event start',  field: 'event_start' },
+                { label: 'Event end',    field: 'event_end' },
+            ];
+            const picked = await vscode.window.showQuickPick(fields, {
+                placeHolder: 'Sort entries by…',
+            });
+            if (picked === undefined) { return; }
+
+            let order: SortOrder = 'asc';
+            if (picked.field !== undefined) {
+                const orderPick = await vscode.window.showQuickPick(
+                    [{ label: '$(arrow-up) Ascending', value: 'asc' as SortOrder }, { label: '$(arrow-down) Descending', value: 'desc' as SortOrder }],
+                    { placeHolder: 'Sort order' },
+                );
+                if (orderPick === undefined) { return; }
+                order = orderPick.value;
+            }
+
+            treeProvider.setSort(picked.field, order);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.filterTree', async () => {
+            const current = treeProvider.filter;
+            const input = await vscode.window.showInputBox({
+                prompt: 'Filter entries by title, tag, or ID (leave empty to clear)',
+                value: current,
+                placeHolder: 'e.g. journal  or  #work',
+            });
+            if (input === undefined) { return; }
+            treeProvider.setFilter(input);
+            treeView.title = input ? `Entries: ${input}` : 'Entries';
+        })
+    );
 
     // ── Command: New Entry ────────────────────────────────────────────────────
     context.subscriptions.push(
@@ -29,6 +91,25 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.window.showTextDocument(doc);
             } catch (err) {
                 vscode.window.showErrorMessage(`Archelon: failed to create entry — ${err}`);
+            }
+        })
+    );
+
+    // ── Command: New Child Entry ──────────────────────────────────────────────
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.newChildEntry', async (item?: EntryItem) => {
+            const cwd = getJournalCwd();
+            if (!cwd) {
+                vscode.window.showErrorMessage('Archelon: no workspace folder open.');
+                return;
+            }
+            const parentId = item?.record.id;
+            try {
+                const filePath = await prepareNewEntry(cwd, parentId);
+                const doc = await vscode.workspace.openTextDocument(filePath);
+                await vscode.window.showTextDocument(doc);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Archelon: failed to create child entry — ${err}`);
             }
         })
     );
@@ -59,20 +140,30 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Command: Remove Entry ─────────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.commands.registerCommand('archelon.removeEntry', async () => {
-            // Default to the active file if it is a managed entry; otherwise ask for an ID.
-            const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
-            let entryArg: string | undefined;
+        vscode.commands.registerCommand('archelon.removeEntry', async (item?: EntryItem) => {
+            let entryArg: string;
+            let cwd: string;
 
-            if (activeFile && isManagedFilename(activeFile) && findJournalRoot(activeFile)) {
-                entryArg = activeFile;
+            if (item) {
+                // Invoked from tree context menu
+                entryArg = item.record.path;
+                cwd = path.dirname(entryArg);
             } else {
-                entryArg = await vscode.window.showInputBox({
-                    prompt: 'Entry ID (or ID prefix) to remove',
-                    placeHolder: '1a2b3c4',
-                });
+                // Default to the active file if it is a managed entry; otherwise ask for an ID.
+                const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+                let arg: string | undefined;
+                if (activeFile && isManagedFilename(activeFile) && findJournalRoot(activeFile)) {
+                    arg = activeFile;
+                } else {
+                    arg = await vscode.window.showInputBox({
+                        prompt: 'Entry ID (or ID prefix) to remove',
+                        placeHolder: '1a2b3c4',
+                    });
+                }
+                if (!arg) { return; }
+                entryArg = arg;
+                cwd = getJournalCwd() ?? path.dirname(entryArg);
             }
-            if (!entryArg) { return; }
 
             const label = path.basename(entryArg);
             const answer = await vscode.window.showWarningMessage(
@@ -82,7 +173,6 @@ export function activate(context: vscode.ExtensionContext) {
             );
             if (answer !== 'Remove') { return; }
 
-            const cwd = getJournalCwd() ?? path.dirname(entryArg);
             try {
                 // Close open tabs for the file before deleting it.
                 const targetPath = entryArg.includes(path.sep)
@@ -99,11 +189,26 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 await removeEntry(entryArg, cwd);
+                treeProvider.refresh();
                 vscode.window.showInformationMessage(`Archelon: removed ${label}`);
             } catch (err) {
                 vscode.window.showErrorMessage(`Archelon: remove failed — ${err}`);
             }
         })
+    );
+
+    // ── Commands: Toggle View Mode (tree ↔ list) ──────────────────────────────
+    const switchViewMode = (mode: 'tree' | 'list') => {
+        if (treeProvider.viewMode !== mode) {
+            treeProvider.toggleViewMode();
+        }
+        vscode.commands.executeCommand('setContext', 'archelon.viewMode', mode);
+    };
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.showListView', () => switchViewMode('list'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('archelon.showTreeView', () => switchViewMode('tree'))
     );
 
     // ── Command: List Entries ─────────────────────────────────────────────────
@@ -159,7 +264,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── On save: entry fix --touch ────────────────────────────────────────────
     context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(async (doc) => {
+        vscode.workspace.onDidSaveTextDocument(async (doc: vscode.TextDocument) => {
             const cfg = vscode.workspace.getConfiguration('archelon');
             if (!cfg.get<boolean>('autoFixOnSave', true)) {
                 return;
@@ -175,6 +280,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             try {
                 const newPath = await fixEntry(filePath);
+                treeProvider.refresh();
                 if (newPath) {
                     // File was renamed: open new file and close old tabs.
                     const newDoc = await vscode.workspace.openTextDocument(newPath);

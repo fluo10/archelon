@@ -167,6 +167,11 @@ pub enum EntryCommand {
         /// Create a new entry template file and print its path instead of resolving an existing entry
         #[arg(long)]
         new: bool,
+
+        /// Parent entry for the new file — accepts `@ID`, a file path, or a title.
+        /// Only valid together with --new.
+        #[arg(long, value_name = "ENTRY", requires = "new")]
+        parent: Option<String>,
     },
     /// Delete an entry file
     Remove {
@@ -274,7 +279,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
         EntryCommand::Set { entry, fields } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, fields),
         EntryCommand::Check { entry } => check(journal_dir, &entry),
         EntryCommand::Fix { entry, touch } => fix(journal_dir, &entry, touch),
-        EntryCommand::Path { entry, new } => entry_path(journal_dir, entry.as_deref(), new),
+        EntryCommand::Path { entry, new, parent } => entry_path(journal_dir, entry.as_deref(), new, parent.as_deref()),
         EntryCommand::Remove { entry } => remove(journal_dir, &entry),
     }
 }
@@ -505,7 +510,7 @@ fn edit(path: &Path, journal_dir: Option<&Path>) -> Result<()> {
 
 fn edit_new(journal_dir: Option<&Path>) -> Result<()> {
     let journal = open_journal(journal_dir)?;
-    let path = ops::prepare_new_entry(&journal)?;
+    let path = ops::prepare_new_entry(&journal, None)?;
 
     let editor = resolve_editor();
     let status = Command::new(&editor)
@@ -590,10 +595,18 @@ fn fix(journal_dir: Option<&Path>, entry: &str, touch: bool) -> Result<()> {
 
 // ── path ──────────────────────────────────────────────────────────────────────
 
-fn entry_path(journal_dir: Option<&Path>, entry: Option<&str>, new: bool) -> Result<()> {
+fn entry_path(journal_dir: Option<&Path>, entry: Option<&str>, new: bool, parent: Option<&str>) -> Result<()> {
     if new {
         let journal = open_journal(journal_dir)?;
-        let path = ops::prepare_new_entry(&journal)?;
+        let parent_id = if let Some(p) = parent {
+            let entry_ref = EntryRef::parse(p);
+            let conn = cache::open_cache(&journal)?;
+            cache::sync_cache(&journal, &conn)?;
+            Some(ops::resolve_parent_id(&conn, Some(&entry_ref))?)
+        } else {
+            None
+        };
+        let path = ops::prepare_new_entry(&journal, parent_id.flatten())?;
         println!("{}", path.display());
     } else {
         let path = resolve_entry(journal_dir, entry.unwrap())?;

@@ -1,5 +1,6 @@
 {
   "name": "archelon-vscode",
+  "packageManager": "pnpm@10.30.3",
   "displayName": "Archelon",
   "publisher": "fluo10",
   "description": "VS Code extension for the Archelon journal",
@@ -19,10 +20,74 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "archelon",
+          "title": "Archelon",
+          "icon": "media/archelon.svg"
+        }
+      ]
+    },
+    "views": {
+      "archelon": [
+        {
+          "id": "archelon.entries",
+          "name": "Entries"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "archelon.newEntry",
+          "when": "view == archelon.entries",
+          "group": "navigation@1"
+        },
+        {
+          "command": "archelon.filterTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@2"
+        },
+        {
+          "command": "archelon.sortTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@3"
+        },
+        {
+          "command": "archelon.refreshTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@4"
+        },
+        {
+          "command": "archelon.showTreeView",
+          "when": "view == archelon.entries && archelon.viewMode == list",
+          "group": "navigation@5"
+        },
+        {
+          "command": "archelon.showListView",
+          "when": "view == archelon.entries && archelon.viewMode == tree",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "archelon.newChildEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "archelon.removeEntry",
+          "when": "view == archelon.entries && viewItem == entry",
+          "group": "1_modification@2"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "archelon.newEntry",
-        "title": "Archelon: New Entry"
+        "title": "Archelon: New Entry",
+        "icon": "$(add)"
       },
       {
         "command": "archelon.openEntry",
@@ -30,11 +95,42 @@
       },
       {
         "command": "archelon.removeEntry",
-        "title": "Archelon: Remove Entry"
+        "title": "Archelon: Remove Entry",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "archelon.newChildEntry",
+        "title": "Archelon: New Child Entry",
+        "icon": "$(type-hierarchy-sub)"
       },
       {
         "command": "archelon.listEntries",
         "title": "Archelon: List Entries"
+      },
+      {
+        "command": "archelon.refreshTree",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "archelon.filterTree",
+        "title": "Filter Entries",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "archelon.sortTree",
+        "title": "Sort Entries",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "archelon.showListView",
+        "title": "Archelon: Switch to List View",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "archelon.showTreeView",
+        "title": "Archelon: Switch to Tree View",
+        "icon": "$(list-tree)"
       }
     ],
     "configuration": {
