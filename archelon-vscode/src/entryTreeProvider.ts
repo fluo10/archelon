@@ -11,7 +11,7 @@ export class EntryItem extends vscode.TreeItem {
         public readonly children: EntryRecord[],
     ) {
         super(
-            `${record.id} ${record.title || '(untitled)'}`,
+            record.title || '(untitled)',
             children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None,
@@ -23,13 +23,16 @@ export class EntryItem extends vscode.TreeItem {
             arguments: [vscode.Uri.file(record.path)],
         };
 
+        let desc = `@${record.id}`;
         if (record.task) {
-            this.description = `[${record.task.status}]`;
+            desc += ` [${record.task.status}]`;
         } else if (record.event) {
-            this.description = record.event.start === record.event.end
+            const span = record.event.start === record.event.end
                 ? record.event.start.slice(0, 10)
                 : `${record.event.start.slice(0, 10)} – ${record.event.end.slice(0, 10)}`;
+            desc += ` ${span}`;
         }
+        this.description = desc;
 
         const md = new vscode.MarkdownString();
         md.appendMarkdown(`**ID:** \`${record.id}\`  \n`);
