@@ -50,24 +50,29 @@
           "group": "navigation@2"
         },
         {
-          "command": "archelon.sortTree",
+          "command": "archelon.setPeriod",
           "when": "view == archelon.entries",
           "group": "navigation@3"
         },
         {
-          "command": "archelon.refreshTree",
+          "command": "archelon.sortTree",
           "when": "view == archelon.entries",
           "group": "navigation@4"
         },
         {
+          "command": "archelon.refreshTree",
+          "when": "view == archelon.entries",
+          "group": "navigation@5"
+        },
+        {
           "command": "archelon.showTreeView",
           "when": "view == archelon.entries && archelon.viewMode == list",
-          "group": "navigation@5"
+          "group": "navigation@6"
         },
         {
           "command": "archelon.showListView",
           "when": "view == archelon.entries && archelon.viewMode == tree",
-          "group": "navigation@5"
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [
@@ -121,6 +126,11 @@
         "command": "archelon.sortTree",
         "title": "Sort Entries",
         "icon": "$(list-ordered)"
+      },
+      {
+        "command": "archelon.setPeriod",
+        "title": "Filter by Period",
+        "icon": "$(calendar)"
       },
       {
         "command": "archelon.showListView",
