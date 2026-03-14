@@ -92,12 +92,12 @@ pub fn entry_emoji(task: Option<&TaskMeta>, event: Option<&EventMeta>) -> &'stat
 
 /// Render symbols into a fixed 2-slot string for terminal output.
 ///
-/// Each missing slot is replaced with a fullwidth space (U+3000 `　`).
+/// Each missing slot is replaced with a fullwidth middle dot (U+30FB `・`).
 /// The result is always exactly 2 visual columns wide.
 pub fn symbols_text(symbols: &[Symbol]) -> String {
     match symbols.len() {
-        0 => "　　".to_owned(),
-        1 => format!("　{}", symbols[0].emoji),
+        0 => "・・".to_owned(),
+        1 => format!("・{}", symbols[0].emoji),
         _ => format!("{}{}", symbols[0].emoji, symbols[1].emoji),
     }
 }
