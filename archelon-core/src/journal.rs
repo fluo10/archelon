@@ -226,9 +226,9 @@ impl Default for JournalSection {
 #[serde(rename_all = "snake_case")]
 pub enum DuplicateTitlePolicy {
     /// Duplicates are silently allowed.
-    #[default]
     Allow,
     /// Print a warning to stderr for each duplicate title, but continue.
+    #[default]
     Warn,
     /// Abort sync with [`Error::DuplicateTitle`] on the first duplicate found.
     Error,

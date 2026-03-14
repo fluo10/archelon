@@ -17,7 +17,7 @@ use crate::{
     entry::{Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
-    journal::{Journal, slugify},
+    journal::{DuplicateTitlePolicy, Journal, slugify},
     parser::{read_entry, render_entry},
     period::Period,
 };
@@ -485,21 +485,25 @@ pub fn create_entry(journal: &Journal, conn: &Connection, fields: EntryFields) -
 
     // ── duplicate title check ──────────────────────────────────────────────
     if !title.is_empty() {
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM entries WHERE title = ?1",
-            [&title],
-            |row| row.get(0),
-        )?;
-        if count > 0 {
-            return Err(Error::DuplicateTitle(title));
+        let dup_policy = journal.config().unwrap_or_default().journal.duplicate_title;
+        if dup_policy != DuplicateTitlePolicy::Allow {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM entries WHERE title = ?1",
+                [&title],
+                |row| row.get(0),
+            )?;
+            if count > 0 {
+                match dup_policy {
+                    DuplicateTitlePolicy::Warn => {
+                        eprintln!("warn: duplicate title detected: `{title}`");
+                    }
+                    DuplicateTitlePolicy::Error => {
+                        return Err(Error::DuplicateTitle(title.clone()));
+                    }
+                    DuplicateTitlePolicy::Allow => unreachable!(),
+                }
+            }
         }
-    }
-
-    // ── duplicate ID check (rare; IDs are time-based) ──────────────────────
-    let id_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM entries WHERE id = ?1", [id], |row| row.get(0))?;
-    if id_count > 0 {
-        return Err(Error::DuplicateId(id.to_string(), "<new>".to_owned(), "<cache>".to_owned()));
     }
 
     // ── resolve parent ─────────────────────────────────────────────────────
@@ -869,7 +873,7 @@ pub fn remove_entry(path: &Path) -> Result<()> {
 
 /// Build the canonical filename for an entry using the frontmatter slug (if set)
 /// or `slugify(title)` as a fallback.
-fn entry_filename_from_frontmatter(id: CarettaId, fm: &Frontmatter) -> String {
+pub(crate) fn entry_filename_from_frontmatter(id: CarettaId, fm: &Frontmatter) -> String {
     let slug = if !fm.slug.is_empty() {
         fm.slug.clone()
     } else if fm.title.is_empty() {

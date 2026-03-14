@@ -50,7 +50,7 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 use crate::{
     error::{Error, Result},
     journal::{DuplicateTitlePolicy, Journal},
-    parser::read_entry,
+    parser::{read_entry, render_entry},
 };
 
 // ── schema version ────────────────────────────────────────────────────────────
@@ -268,38 +268,30 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
             .map_or(true, |&stored| stored != *mtime);
 
         if needs_update {
-            // Record in `files` first; `entries.path` has an FK to `files.path`.
-            conn.execute(
-                "INSERT OR REPLACE INTO files (path, file_mtime) VALUES (?1, ?2)",
-                params![path_str.as_ref(), mtime],
-            )?;
             match read_entry(path) {
                 Ok(entry) => {
                     // ── duplicate ID check ────────────────────────────────
-                    // Detect if another file already holds the same ID.
-                    // `INSERT OR REPLACE` would silently overwrite it, so we
-                    // check explicitly and abort the sync with an error.
-                    let conflict: Option<String> = conn
-                        .query_row(
-                            "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
-                            params![entry.frontmatter.id, path_str.as_ref()],
-                            |row| row.get(0),
-                        )
-                        .optional()?;
-                    if let Some(other) = conflict {
-                        conn.execute_batch("ROLLBACK")?;
-                        return Err(Error::DuplicateId(
-                            entry.frontmatter.id.to_string(),
-                            path.display().to_string(),
-                            other,
-                        ));
-                    }
-
+                    // On collision, increment the ID until a free slot is
+                    // found, rename the file, and rewrite the frontmatter.
+                    let entry = increment_until_free(conn, entry)?;
+                    let final_mtime = file_mtime(&entry.path)?;
+                    let final_str = entry.path.to_string_lossy();
+                    // Record in `files`; `entries.path` has an FK to `files.path`.
+                    conn.execute(
+                        "INSERT OR REPLACE INTO files (path, file_mtime) VALUES (?1, ?2)",
+                        params![final_str.as_ref(), final_mtime],
+                    )?;
                     upsert_entry(conn, &entry)?;
                     entry_changed = true;
                 }
                 Err(e) => {
-                    // File changed but is not a valid entry — remove any stale entry row.
+                    // File changed but is not a valid entry — still track it
+                    // so mtime comparison skips it on future syncs.
+                    conn.execute(
+                        "INSERT OR REPLACE INTO files (path, file_mtime) VALUES (?1, ?2)",
+                        params![path_str.as_ref(), mtime],
+                    )?;
+                    // Remove any stale entry row.
                     conn.execute(
                         "DELETE FROM entries WHERE path = ?1",
                         [path_str.as_ref()],
@@ -537,10 +529,16 @@ pub fn remove_from_cache(conn: &Connection, path: &Path) -> Result<()> {
 ///
 /// Use this after `create_entry` or `update_entry` to keep the cache warm
 /// without a full sync round-trip.
+///
+/// If the entry's ID collides with an existing cache entry, the ID is
+/// incremented until a free slot is found, the file is renamed on disk, and
+/// the frontmatter is rewritten — all silently.
 pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
-    let mtime = file_mtime(path)?;
     let entry = read_entry(path)?;
-    let path_str = path.to_string_lossy();
+    // Resolve ID collision by incrementing until a free slot is found.
+    let entry = increment_until_free(conn, entry)?;
+    let mtime = file_mtime(&entry.path)?;
+    let path_str = entry.path.to_string_lossy();
     // Insert into `files` first; `entries.path` has an FK to `files.path`.
     conn.execute(
         "INSERT OR REPLACE INTO files (path, file_mtime) VALUES (?1, ?2)",
@@ -630,6 +628,38 @@ fn fetch_full_entry(
     };
 
     Ok(Entry { path: PathBuf::from(path_str), frontmatter, body })
+}
+
+/// Resolves an ID collision by calling `increment()` until a free slot is
+/// found, then renames the file on disk and rewrites its frontmatter.
+/// Returns the entry with its final (non-colliding) ID and path.
+fn increment_until_free(
+    conn: &Connection,
+    mut entry: crate::entry::Entry,
+) -> Result<crate::entry::Entry> {
+    loop {
+        let path_str = entry.path.to_string_lossy();
+        let conflict: Option<String> = conn
+            .query_row(
+                "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
+                params![entry.frontmatter.id, path_str.as_ref()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if conflict.is_none() {
+            break;
+        }
+        entry.frontmatter.id = entry.frontmatter.id.increment();
+        let new_name = crate::ops::entry_filename_from_frontmatter(
+            entry.frontmatter.id,
+            &entry.frontmatter,
+        );
+        let new_path = entry.path.parent().unwrap_or_else(|| Path::new(".")).join(&new_name);
+        std::fs::rename(&entry.path, &new_path)?;
+        std::fs::write(&new_path, render_entry(&entry))?;
+        entry.path = new_path;
+    }
+    Ok(entry)
 }
 
 fn collect_with_mtime(journal: &Journal) -> Result<Vec<(PathBuf, i64)>> {
