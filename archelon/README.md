@@ -142,10 +142,10 @@ Opens the entry in `$EDITOR`.
 #### Update frontmatter fields
 
 ```bash
-archelon entry set <file-or-id> --title "New title"
-archelon entry set <file-or-id> --tags work,backend
-archelon entry set <file-or-id> --tags          # clear all tags
-archelon entry set <file-or-id> --task-status done
+archelon entry modify <file-or-id> --title "New title"
+archelon entry modify <file-or-id> --tags work,backend
+archelon entry modify <file-or-id> --tags          # clear all tags
+archelon entry modify <file-or-id> --task-status done
 ```
 
 When `--task-status` is set to `done`, `cancelled`, or `archived`, `closed_at` is set automatically.

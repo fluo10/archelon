@@ -145,7 +145,7 @@ pub enum EntryCommand {
         new: bool,
     },
     /// Update frontmatter fields without opening an editor
-    Set {
+    Modify {
         /// Path to the entry file, or an ID / ID prefix
         entry: String,
 
@@ -194,7 +194,7 @@ pub enum EntryCommand {
     },
 }
 
-/// Frontmatter fields shared between `entry new` and `entry set` (clap-aware).
+/// Frontmatter fields shared between `entry new` and `entry modify` (clap-aware).
 ///
 /// After parsing this is converted into [`archelon_core::ops::EntryFields`]
 /// and passed to the core operation functions.
@@ -204,7 +204,7 @@ pub struct EntryFields {
     #[arg(long, short)]
     pub title: Option<String>,
 
-    /// Body content (Markdown). For `entry set`, replaces the existing body.
+    /// Body content (Markdown). For `entry modify`, replaces the existing body.
     #[arg(long, short)]
     pub body: Option<String>,
 
@@ -293,7 +293,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
                 bail!("specify an entry or use --new to create one")
             }
         }
-        EntryCommand::Set { entry, fields, no_parent } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, fields, no_parent),
+        EntryCommand::Modify { entry, fields, no_parent } => set(journal_dir, &resolve_entry(journal_dir, &entry)?, fields, no_parent),
         EntryCommand::Check { entry } => check(journal_dir, &entry),
         EntryCommand::Fix { entry, touch } => fix(journal_dir, &entry, touch),
         EntryCommand::Path { entry, new, parent } => entry_path(journal_dir, entry.as_deref(), new, parent.as_deref()),
@@ -587,7 +587,7 @@ fn edit_new(journal_dir: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-// ── set ───────────────────────────────────────────────────────────────────────
+// ── modify ────────────────────────────────────────────────────────────────────
 
 fn set(journal_dir: Option<&Path>, path: &Path, fields: EntryFields, no_parent: bool) -> Result<()> {
     if fields.title.is_none()
