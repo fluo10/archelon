@@ -59,12 +59,12 @@ pub struct TaskMeta {
     pub status: String,
 
     /// Timestamp when the task was started (status → in_progress).
-    /// Set automatically by `entry set`; can be overridden manually.
+    /// Set automatically by `entry modify`; can be overridden manually.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub started_at: Option<NaiveDateTime>,
 
     /// Timestamp when the task was closed (status → done/cancelled/archived).
-    /// Set automatically by `entry set`; can be overridden manually.
+    /// Set automatically by `entry modify`; can be overridden manually.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub closed_at: Option<NaiveDateTime>,
 

@@ -148,7 +148,7 @@ struct EntryNewParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct EntrySetParams {
+struct EntryModifyParams {
     /// File path to the entry, or an ID / ID prefix
     entry: String,
     /// New title
@@ -485,7 +485,7 @@ impl ArchelonServer {
     }
 
     #[tool(description = "Update frontmatter fields of an existing journal entry")]
-    fn entry_set(&self, Parameters(p): Parameters<EntrySetParams>) -> Result<String, String> {
+    fn entry_modify(&self, Parameters(p): Parameters<EntryModifyParams>) -> Result<String, String> {
         (|| -> anyhow::Result<String> {
             if p.title.is_none()
                 && p.body.is_none()
@@ -645,7 +645,7 @@ impl ServerHandler for ArchelonServer {
             .with_instructions(
                 "Archelon is a Markdown-based journal/task manager. \
                  Use entry_list to browse entries, entry_show to read one, \
-                 entry_new to create, and entry_set to update metadata."
+                 entry_new to create, and entry_modify to update metadata."
                     .to_owned(),
             )
     }
