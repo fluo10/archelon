@@ -50,7 +50,7 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 use crate::{
     error::{Error, Result},
     journal::{DuplicateTitlePolicy, Journal},
-    parser::read_entry,
+    parser::{read_entry, render_entry},
 };
 
 // ── schema version ────────────────────────────────────────────────────────────
@@ -537,10 +537,44 @@ pub fn remove_from_cache(conn: &Connection, path: &Path) -> Result<()> {
 ///
 /// Use this after `create_entry` or `update_entry` to keep the cache warm
 /// without a full sync round-trip.
+///
+/// If the entry's ID collides with an existing cache entry, the ID is
+/// incremented until a free slot is found, the file is renamed on disk, and
+/// the frontmatter is rewritten — all silently.
 pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
-    let mtime = file_mtime(path)?;
-    let entry = read_entry(path)?;
-    let path_str = path.to_string_lossy();
+    let mut entry = read_entry(path)?;
+    let mut current_path = path.to_path_buf();
+
+    // Resolve ID collision by incrementing until a free slot is found.
+    loop {
+        let path_str = current_path.to_string_lossy();
+        let conflict: Option<String> = conn
+            .query_row(
+                "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
+                params![entry.frontmatter.id, path_str.as_ref()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if conflict.is_none() {
+            break;
+        }
+        entry.frontmatter.id = entry.frontmatter.id.increment();
+        let new_name = crate::ops::entry_filename_from_frontmatter(
+            entry.frontmatter.id,
+            &entry.frontmatter,
+        );
+        let new_path = current_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(&new_name);
+        std::fs::rename(&current_path, &new_path)?;
+        std::fs::write(&new_path, render_entry(&entry))?;
+        entry.path = new_path.clone();
+        current_path = new_path;
+    }
+
+    let mtime = file_mtime(&current_path)?;
+    let path_str = current_path.to_string_lossy();
     // Insert into `files` first; `entries.path` has an FK to `files.path`.
     conn.execute(
         "INSERT OR REPLACE INTO files (path, file_mtime) VALUES (?1, ?2)",

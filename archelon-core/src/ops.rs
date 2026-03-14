@@ -495,13 +495,6 @@ pub fn create_entry(journal: &Journal, conn: &Connection, fields: EntryFields) -
         }
     }
 
-    // ── duplicate ID check (rare; IDs are time-based) ──────────────────────
-    let id_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM entries WHERE id = ?1", [id], |row| row.get(0))?;
-    if id_count > 0 {
-        return Err(Error::DuplicateId(id.to_string(), "<new>".to_owned(), "<cache>".to_owned()));
-    }
-
     // ── resolve parent ─────────────────────────────────────────────────────
     let parent_id = match &fields.parent {
         UpdateOption::Set(r) => resolve_parent_id(conn, Some(r))?,
@@ -869,7 +862,7 @@ pub fn remove_entry(path: &Path) -> Result<()> {
 
 /// Build the canonical filename for an entry using the frontmatter slug (if set)
 /// or `slugify(title)` as a fallback.
-fn entry_filename_from_frontmatter(id: CarettaId, fm: &Frontmatter) -> String {
+pub(crate) fn entry_filename_from_frontmatter(id: CarettaId, fm: &Frontmatter) -> String {
     let slug = if !fm.slug.is_empty() {
         fm.slug.clone()
     } else if fm.title.is_empty() {
