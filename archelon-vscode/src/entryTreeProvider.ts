@@ -11,7 +11,7 @@ export class EntryItem extends vscode.TreeItem {
         public readonly children: EntryRecord[],
     ) {
         const typeSymbol = record.symbols?.[record.symbols.length - 1]?.emoji ?? '📝';
-        const freshnessSymbol = record.symbols && record.symbols.length > 1 ? record.symbols[0].emoji : '　';
+        const freshnessSymbol = record.symbols && record.symbols.length > 1 ? record.symbols[0].emoji : '・';
         const emojiSlot = `${freshnessSymbol}${typeSymbol}`;
         super(
             `${emojiSlot} ${record.title || '(untitled)'}`,
