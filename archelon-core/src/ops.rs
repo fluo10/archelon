@@ -302,6 +302,9 @@ pub enum MatchLabel {
     EventSpan,
     CreatedAt,
     UpdatedAt,
+    /// Entry did not match the filter itself, but one or more of its
+    /// descendants did (included to preserve tree context).
+    ParentOfMatch,
 }
 
 impl MatchLabel {
@@ -313,6 +316,7 @@ impl MatchLabel {
             MatchLabel::EventSpan      => "EVENT_SPAN",
             MatchLabel::CreatedAt      => "CREATED",
             MatchLabel::UpdatedAt      => "UPDATED",
+            MatchLabel::ParentOfMatch  => "PARENT_OF_MATCH",
         }
     }
 }
@@ -385,6 +389,77 @@ pub fn build_entry_tree(entries: Vec<(EntryHeader, Vec<MatchLabel>)>) -> Vec<Ent
         .filter(|&i| is_root[i])
         .map(|i| build_node(i, &mut slots, &children_of))
         .collect()
+}
+
+/// Enrich a filtered entry list with ancestor entries that were excluded by
+/// the filter but are needed to preserve tree context.
+///
+/// For every entry in `filtered` whose `parent_id` is not already present,
+/// this function walks up the parent chain and adds the missing ancestors
+/// with a single [`MatchLabel::ParentOfMatch`] label.  The ancestors are
+/// appended after the filtered entries; `build_entry_tree` then places them
+/// at the correct positions in the hierarchy.
+///
+/// If `filtered` is empty or no ancestors are missing this is a no-op.
+pub fn fill_ancestor_entries(
+    mut filtered: Vec<(EntryHeader, Vec<MatchLabel>)>,
+    journal_dir: Option<&Path>,
+) -> Result<Vec<(EntryHeader, Vec<MatchLabel>)>> {
+    use std::collections::{HashMap, HashSet};
+
+    if filtered.is_empty() {
+        return Ok(filtered);
+    }
+
+    // IDs already present in the filtered set.
+    let present: HashSet<CarettaId> = filtered.iter().map(|(e, _)| e.frontmatter.id).collect();
+
+    // Load the full entry index for parent lookups.
+    let all_map: HashMap<CarettaId, EntryHeader> = {
+        let journal = if let Some(dir) = journal_dir {
+            Journal::from_root(dir.to_path_buf())?
+        } else {
+            Journal::find()?
+        };
+        let all = if let Ok(conn) = cache::open_cache(&journal) {
+            let _ = cache::sync_cache(&journal, &conn);
+            cache::list_entries_from_cache(&conn).unwrap_or_else(|_| vec![])
+        } else {
+            journal
+                .collect_entries()?
+                .iter()
+                .filter_map(|p| read_entry(p).ok().map(EntryHeader::from))
+                .collect()
+        };
+        all.into_iter().map(|e| (e.frontmatter.id, e)).collect()
+    };
+
+    // Walk up from every filtered entry and collect missing ancestors.
+    // Use an IndexMap to preserve insertion order (roughly child→parent) and
+    // deduplicate automatically.
+    let mut to_add: IndexMap<CarettaId, EntryHeader> = IndexMap::new();
+    for (entry, _) in &filtered {
+        let mut current_pid = entry.frontmatter.parent_id;
+        while let Some(pid) = current_pid {
+            if present.contains(&pid) || to_add.contains_key(&pid) {
+                break;
+            }
+            match all_map.get(&pid) {
+                Some(parent) => {
+                    let next = parent.frontmatter.parent_id;
+                    to_add.insert(pid, parent.clone());
+                    current_pid = next;
+                }
+                None => break,
+            }
+        }
+    }
+
+    for (_, ancestor) in to_add {
+        filtered.push((ancestor, vec![MatchLabel::ParentOfMatch]));
+    }
+
+    Ok(filtered)
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
