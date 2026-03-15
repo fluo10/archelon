@@ -300,6 +300,11 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
             let filter = build_filter(&filter_args, week_start)?;
             let entries = ops::list_entries(journal_dir, &filter)?;
             let has_filter = filter.has_any_filter();
+            let entries = if has_filter {
+                ops::fill_ancestor_entries(entries, journal_dir)?
+            } else {
+                entries
+            };
             let roots = ops::build_entry_tree(entries);
             print_tree(&roots, has_filter, json, !no_emoji)
         }
