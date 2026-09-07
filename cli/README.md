@@ -216,7 +216,7 @@ timezone = "Asia/Tokyo"   # IANA timezone name
 
 ## MCP server
 
-The MCP (Model Context Protocol) server now ships as a separate `sapphire-journal-mcp` binary in the [sapphire-journal-mcp](../sapphire-journal-mcp/) crate. Install it alongside the CLI to let AI agents (Claude, etc.) read and write journal entries.
+The MCP (Model Context Protocol) server now ships as a separate `sapphire-journal-mcp` binary in the [sapphire-journal-mcp](../crates/sapphire-journal-mcp/) crate. Install it alongside the CLI to let AI agents (Claude, etc.) read and write journal entries.
 
 ### Start the server
 

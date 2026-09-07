@@ -51,7 +51,7 @@ confidence-threshold = 0.93
 # Per-crate carve-outs for licenses we don't want to globally allow.
 exceptions = [
     # Our own GPL-3.0-or-later desktop crate (with App Store exception, see
-    # sapphire-journal-desktop/LICENSE.App-Store-Exception). Scoping it here
+    # desktop/LICENSE.App-Store-Exception). Scoping it here
     # prevents other GPL-3.0 deps from silently slipping in.
     { name = "sapphire-journal-desktop", allow = ["GPL-3.0-or-later"] },
     # `epaint_default_fonts` ships the Ubuntu font under the Ubuntu Font
