@@ -1,5 +1,7 @@
 # sapphire-journal
 
+> Language: **English** | [日本語](README.ja.md)
+
 Markdown-based task and note manager for humans and AI agents — your data lives in plain text, timeless like fossils.
 
 ## Concept
@@ -98,7 +100,7 @@ cargo install sapphire-journal-cli
 
 ## CLI usage
 
-See [sapphire-journal-cli/README.md](sapphire-journal-cli/README.md) for the full command reference.
+See [cli/README.md](cli/README.md) for the full command reference.
 
 A **journal** is any directory tree that contains a `.sapphire-journal/` directory.
 `sapphire-journal` locates it by walking up from the current directory, the same way `git` finds `.git/`.
@@ -121,11 +123,13 @@ Platform-specific VSIX files (with the CLI binary bundled) are also on the [Rele
 
 ```
 sapphire-journal/
-├── sapphire-journal-core/     # Data model, Markdown parser/serializer, SQLite cache
-├── sapphire-journal-cli/      # CLI binary (sapphire-journal)
-├── sapphire-journal-mcp/      # MCP server binary (sapphire-journal-mcp)
-├── sapphire-journal-desktop/  # Desktop GUI (egui)
-└── sapphire-journal-vscode/   # VS Code extension
+├── cli/                     # CLI binary (sapphire-journal)
+├── desktop/                 # Desktop GUI (egui)
+├── server/                  # self-hosted remote workspace + MCP server
+├── crates/
+│   ├── sapphire-journal-core/   # Data model, Markdown parser/serializer, SQLite cache
+│   └── sapphire-journal-mcp/    # MCP server library (embedded by cli and server)
+└── sapphire-journal-vscode/   # VS Code extension (not a Rust crate)
 ```
 
 ## Status
@@ -141,7 +145,7 @@ This repository contains components under different licenses:
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
 | `sapphire-journal-cli` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
-| `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](sapphire-journal-desktop/LICENSE.App-Store-Exception) |
+| `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](desktop/LICENSE.App-Store-Exception) |
 | `sapphire-journal-vscode` | MIT |
 
 See the `LICENSE` (or `LICENSE-MIT` / `LICENSE-APACHE`) file in each component's directory for the full license text.

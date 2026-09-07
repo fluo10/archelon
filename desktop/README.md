@@ -11,13 +11,13 @@ The desktop crate is `publish = false`, so prebuilt binaries from the [Releases]
 ### Install script (Linux / macOS)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fluo10/sapphire-journal/main/sapphire-journal-desktop/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fluo10/sapphire-journal/main/desktop/install.sh | sh
 ```
 
 ### Install script (Windows)
 
 ```powershell
-irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/sapphire-journal-desktop/install.ps1 | iex
+irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/desktop/install.ps1 | iex
 ```
 
 Both scripts download the latest `desktop-v*` release asset for your platform into `~/.local/bin/` (Windows: `%USERPROFILE%\.local\bin\`) and add the directory to `PATH` if needed.
@@ -65,7 +65,7 @@ Journals registered through the GUI are git repositories on disk — you can `cd
 
 ## MCP server
 
-The desktop app embeds the [`sapphire-journal-mcp`](../sapphire-journal-mcp/) HTTP server. Enable it in **Settings → MCP** to let AI agents (Claude, etc.) read and write the currently open journal over HTTP.
+The desktop app embeds the [`sapphire-journal-mcp`](../crates/sapphire-journal-mcp/) HTTP server. Enable it in **Settings → MCP** to let AI agents (Claude, etc.) read and write the currently open journal over HTTP.
 
 ## License
 

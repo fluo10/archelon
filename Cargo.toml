@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "sapphire-journal-cli",
-    "sapphire-journal-core",
-    "sapphire-journal-desktop",
-    "sapphire-journal-mcp",
-    "sapphire-journal-server",
+    "cli",
+    "crates/sapphire-journal-core",
+    "desktop",
+    "crates/sapphire-journal-mcp",
+    "server",
 ]
 resolver = "3"
 
