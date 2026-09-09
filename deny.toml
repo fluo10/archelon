@@ -15,13 +15,13 @@ all-features = true
 
 [advisories]
 yanked = "warn"
-# Transitive `unmaintained` advisories we can't act on without replacing
-# major deps (image/rav1e, git2). Re-evaluate when those crates' upstreams
-# move off the unmaintained package, or when a *vulnerability* (not just
-# unmaintained) advisory is filed for any of them.
+# Transitive advisories we can't act on without replacing a major dep.
+# Re-evaluate when those crates' upstreams move off the affected package, or
+# when a fix lands upstream.
 ignore = [
     { id = "RUSTSEC-2026-0105", reason = "core2 is unmaintained and yanked but pulled in via image → rav1e → bitstream-io." },
     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained but pulled in via many proc-macro consumers; no drop-in replacement." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained (author announced no further fixes) but pulled in transitively via egui/epaint_default_fonts; no drop-in replacement yet." },
 ]
 
 [licenses]
@@ -63,10 +63,14 @@ exceptions = [
 # Duplicate-version warnings are too noisy in real Rust workspaces (every
 # transitively-pulled `syn`/`bitflags`/`hashbrown` version trips it).
 multiple-versions = "allow"
-wildcards = "deny"
+# Our own sapphire-framework crates are git/branch dependencies (no version
+# requirement), so they always look like wildcard deps. Allow them.
+wildcards = "allow"
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# The sapphire-framework crates are consumed as a git/branch dependency until
+# they are published to crates.io.
+allow-git = ["https://github.com/fluo10/sapphire-framework?branch=main"]
