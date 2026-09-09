@@ -286,7 +286,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
  "x11rb",
 ]
 
@@ -1420,7 +1420,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1781,7 +1781,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3492,7 +3492,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5061,7 +5061,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5136,7 +5136,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0558092c97d75b9e9a0a4b05a9c49bd39d1aee445d32c4bfc3e9600dddbb3f6"
 dependencies = [
  "sapphire-framework-blob",
  "sapphire-framework-registry",
@@ -5147,7 +5148,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-blob"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "216dcc71e050e20c5c096d498a89712e893d0e0abdddcf0ab78ccf7d67f42c0e"
 dependencies = [
  "sha2",
  "thiserror 2.0.18",
@@ -5156,7 +5158,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-registry"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fbc096621c301c3e7af084c19f7bf20fe0981c492ea3ee8198d579790efc04c"
 dependencies = [
  "chrono",
  "grain-id 0.16.0",
@@ -5168,7 +5171,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-remote-server"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42fe4b68cbf81d6d6a4bae0bcb40d69e99529579d0e1727fb8df6d60469c9d1a"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -5192,7 +5196,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-retrieve"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34d1bf8509245f104cdcca9bf4b8d1069cef721b29d364d0a3a9065341e26067"
 dependencies = [
  "fastembed",
  "redb",
@@ -5207,7 +5212,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-rpc"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7ce2b12599a26fdcef147d73ec859036330f20d55f72ad849bc02316bfe398f"
 dependencies = [
  "chrono",
  "serde",
@@ -5218,7 +5224,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-track"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "740874d757ad169517009f506d7fd0c4dd5a7235a9c51b1969a7e2ec27a11318"
 dependencies = [
  "redb",
  "thiserror 2.0.18",
@@ -5228,7 +5235,8 @@ dependencies = [
 [[package]]
 name = "sapphire-framework-workspace"
 version = "0.14.0"
-source = "git+https://github.com/fluo10/sapphire-framework?branch=main#282eb82df30c1c3581625c7928190110d08b1491"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdcbf154683fee34f2ed9145ecc1c943dc8ddb191ce2e1a14d030df12dd1cd86"
 dependencies = [
  "chrono",
  "indexmap",
@@ -6077,7 +6085,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7315,7 +7323,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
