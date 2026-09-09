@@ -821,7 +821,11 @@ fn draw_home_calendar(app: &mut App, ui: &mut egui::Ui) {
             tags: Vec::new(),
             sort_by: CoreSortField::Unsorted,
             sort_order: CoreSortOrder::Asc,
-        };
+            // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
+            include_stale: true,
+            include_hidden: true,
+            stale_after_days: 30,
+            };
         let n = home
             .entries
             .iter()
@@ -1149,7 +1153,11 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
                 tags: Vec::new(),
                 sort_by: CoreSortField::Unsorted,
                 sort_order: CoreSortOrder::Asc,
-            };
+                // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
+                include_stale: true,
+                include_hidden: true,
+                stale_after_days: 30,
+                };
             headers.retain(|h| filter.matches(h).0);
         }
     }

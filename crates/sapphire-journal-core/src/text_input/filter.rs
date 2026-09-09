@@ -22,6 +22,10 @@ pub struct FilterInputs<'a> {
     pub tags: &'a [String],
     pub sort_by: Option<&'a str>,
     pub sort_order: Option<&'a str>,
+    /// Include stale tasks (default `false` → stale tasks excluded).
+    pub include_stale: bool,
+    /// Include explicitly hidden entries (default `false` → hidden excluded).
+    pub include_hidden: bool,
 }
 
 pub fn build_filter(inputs: FilterInputs<'_>) -> Result<EntryFilter> {
@@ -47,5 +51,9 @@ pub fn build_filter(inputs: FilterInputs<'_>) -> Result<EntryFilter> {
             .map(|s| s.parse::<SortOrder>().map_err(Error::InvalidInput))
             .transpose()?
             .unwrap_or_default(),
+        include_stale: inputs.include_stale,
+        include_hidden: inputs.include_hidden,
+        // 実際の閾値は list_entries 側でジャーナル設定から反映される。
+        stale_after_days: 30,
     })
 }

@@ -246,6 +246,11 @@ pub struct JournalSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entries_dir: Option<String>,
 
+    /// Number of days after which an incomplete task is considered *stale* and
+    /// excluded from default list/tree results. When unset, 30 is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_after_days: Option<u64>,
+
     /// Unknown fields preserved for round-trip compatibility.
     #[serde(flatten)]
     pub extra: IndexMap<String, toml::Value>,
@@ -259,6 +264,7 @@ impl Default for JournalSection {
             id: None,
             duplicate_title: DuplicateTitlePolicy::default(),
             entries_dir: None,
+            stale_after_days: None,
             extra: IndexMap::new(),
         }
     }

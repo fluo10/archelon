@@ -9,11 +9,12 @@ use std::{cmp::Ordering, path::{Path, PathBuf}, str::FromStr};
 use indexmap::IndexMap;
 
 use grain_id::GrainId;
-use chrono::{Datelike as _, NaiveDateTime};
+use chrono::{Datelike as _, Duration, NaiveDateTime};
 use rusqlite::Connection;
 
 use crate::{
     cache,
+    labels::is_stale,
     entry::{Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
@@ -192,7 +193,15 @@ impl FieldSelector {
 /// - `period` absent, `fields` non-empty → include entries where the selected fields exist.
 ///
 /// `task_status` and `tags` are ANDed on top.
-#[derive(Debug, Default)]
+///
+/// `include_stale` / `include_hidden` are entry-level gates applied on top of
+/// every other condition: by default (both `false`) stale tasks and explicitly
+/// `hidden: true` entries are excluded from results regardless of how they
+/// matched. Setting the corresponding flag to `true` restores them.
+/// `stale_after_days` is the stale threshold (a task is stale once its
+/// `updated_at` is at least this many days old); callers load it from the
+/// journal config (`stale_after_days`, defaulting to 30).
+#[derive(Debug, Default, Clone)]
 pub struct EntryFilter {
     /// Period to match against timestamp fields.
     pub period: Option<Period>,
@@ -206,6 +215,13 @@ pub struct EntryFilter {
     pub sort_by: SortField,
     /// Sort direction (default: ascending).
     pub sort_order: SortOrder,
+    /// Include stale tasks in results (default `false` → stale tasks excluded).
+    pub include_stale: bool,
+    /// Include explicitly hidden entries in results (default `false` → hidden excluded).
+    pub include_hidden: bool,
+    /// Stale threshold in days: an incomplete task whose `updated_at` is at least
+    /// this many days old is stale. Ignored when `include_stale` is set.
+    pub stale_after_days: u64,
 }
 
 impl EntryFilter {
@@ -317,7 +333,17 @@ impl EntryFilter {
             true
         };
 
-        (timestamp_ok && status_ok && tags_ok, labels)
+        // Entry-level gates: hidden/stale take priority over every match reason
+        // above — an entry that matched a selector is still excluded unless the
+        // matching include-flag restores it.
+        let hidden_ok = self.include_hidden || entry.frontmatter.hidden != Some(true);
+        let stale_ok = self.include_stale || !is_stale(
+            entry.frontmatter.task.as_ref(),
+            entry.frontmatter.updated_at,
+            Duration::days(self.stale_after_days as i64),
+        );
+
+        (timestamp_ok && status_ok && tags_ok && hidden_ok && stale_ok, labels)
     }
 }
 
@@ -528,6 +554,14 @@ pub fn list_entries(
     state: &JournalState,
     filter: &EntryFilter,
 ) -> Result<Vec<(EntryHeader, Vec<MatchFlag>)>> {
+    // Load the stale threshold from the journal config (`stale_after_days`,
+    // default 30) so the entry-level stale gate in `matches` uses the configured
+    // value rather than the filter's default.
+    let mut filter = filter.clone();
+    if let Ok(cfg) = state.journal.config() {
+        filter.stale_after_days = cfg.journal.stale_after_days.unwrap_or(30);
+    }
+    let filter = &filter;
     if let Ok(conn) = state.open_conn() {
         let _ = cache::sync_cache(&state.journal, &conn, state.retrieve_db(), state.track());
         if let Ok(entries) = cache::list_entries_from_cache(&conn) {
@@ -623,6 +657,9 @@ pub struct EntryFields {
     pub task_closed_at: Option<NaiveDateTime>,
     pub event_start: Option<NaiveDateTime>,
     pub event_end: Option<NaiveDateTime>,
+    /// Hidden flag. `None` = leave unchanged (update) / don't write (create);
+    /// `Some(true)` / `Some(false)` = write the flag to the frontmatter.
+    pub hidden: Option<bool>,
 }
 
 // ── create ────────────────────────────────────────────────────────────────────
@@ -716,6 +753,7 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         updated_at: now,
         task,
         event,
+        hidden: fields.hidden,
         extra: IndexMap::new(),
     };
 
@@ -826,6 +864,10 @@ pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Resu
         if let Some(e) = fields.event_end {
             event.end = e;
         }
+    }
+
+    if let Some(h) = fields.hidden {
+        entry.frontmatter.hidden = Some(h);
     }
 
     fix_entry_mut(&mut entry)

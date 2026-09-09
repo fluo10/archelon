@@ -171,6 +171,14 @@ struct EntryListParams {
 
     /// Sort direction: "asc" (default) or "desc"
     sort_order: Option<String>,
+
+    /// Include stale (long-neglected) tasks, which are excluded from results by
+    /// default. Omit or set false to keep them hidden.
+    include_stale: Option<bool>,
+
+    /// Include explicitly hidden entries (`hidden: true`), which are excluded
+    /// from results by default. Omit or set false to keep them hidden.
+    include_hidden: Option<bool>,
 }
 
 /// Same filter parameters as [`EntryListParams`] but for the tree tool.
@@ -205,6 +213,8 @@ struct EntryNewParams {
     event_start: Option<String>,
     /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
     event_end: Option<String>,
+    /// Hide the entry from default list/tree results (true) or reveal it (false).
+    hidden: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -233,6 +243,9 @@ struct EntryModifyParams {
     event_start: Option<String>,
     /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
     event_end: Option<String>,
+    /// Hide the entry from default list/tree results (true) or reveal it (false).
+    /// Omit to leave the existing value unchanged.
+    hidden: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -269,6 +282,7 @@ fn parse_entry_fields(
     task_closed_at: Option<&str>,
     event_start: Option<&str>,
     event_end: Option<&str>,
+    hidden: Option<bool>,
 ) -> anyhow::Result<EntryFields> {
     use core_fields::{parse_optional_datetime, parse_optional_datetime_end, parse_tags_csv};
     Ok(EntryFields {
@@ -283,6 +297,7 @@ fn parse_entry_fields(
         task_closed_at: parse_optional_datetime(task_closed_at)?,
         event_start: parse_optional_datetime(event_start)?,
         event_end: parse_optional_datetime_end(event_end)?,
+        hidden,
     })
 }
 
@@ -301,6 +316,8 @@ impl<'a> From<&'a EntryListParams> for core_filter::FilterInputs<'a> {
             tags: p.tags.as_deref().unwrap_or(&[]),
             sort_by: p.sort_by.as_deref(),
             sort_order: p.sort_order.as_deref(),
+            include_stale: p.include_stale.unwrap_or(false),
+            include_hidden: p.include_hidden.unwrap_or(false),
         }
     }
 }
@@ -315,7 +332,9 @@ impl SapphireJournalServer {
         to restrict which conditions apply; omitting all selectors applies the period to all \
         timestamp fields (OR). Without a period, field selectors filter entries where that \
         condition is met. event_span uses interval-overlap semantics so in-progress events are \
-        included. task_status and tags are independent AND filters.")]
+        included. task_status and tags are independent AND filters. \
+        Stale tasks and explicitly hidden entries (`hidden: true`) are excluded from \
+        results by default; set `include_stale` / `include_hidden` to restore them.")]
     fn entry_list(&self, Parameters(p): Parameters<EntryListParams>) -> Result<String, String> {
         (|| -> anyhow::Result<String> {
             let filter = core_filter::build_filter(core_filter::FilterInputs::from(&p))?;
@@ -394,6 +413,7 @@ impl SapphireJournalServer {
                 p.task_closed_at.as_deref(),
                 p.event_start.as_deref(),
                 p.event_end.as_deref(),
+                p.hidden,
             )?;
             let fields = EntryFields {
                 title: p.title,
@@ -431,6 +451,7 @@ impl SapphireJournalServer {
                 && p.task_closed_at.is_none()
                 && p.event_start.is_none()
                 && p.event_end.is_none()
+                && p.hidden.is_none()
                 && matches!(p.parent, UpdateOption::Unchanged)
             {
                 anyhow::bail!("nothing to update — specify at least one field");
@@ -445,6 +466,7 @@ impl SapphireJournalServer {
                 p.task_closed_at.as_deref(),
                 p.event_start.as_deref(),
                 p.event_end.as_deref(),
+                p.hidden,
             )?;
             let fields = EntryFields {
                 title: p.title,
@@ -849,6 +871,7 @@ mod tests {
             task_closed_at: None,
             event_start: None,
             event_end: None,
+            hidden: None,
         }
     }
 
@@ -866,6 +889,7 @@ mod tests {
             task_closed_at: None,
             event_start: None,
             event_end: None,
+            hidden: None,
         }
     }
 

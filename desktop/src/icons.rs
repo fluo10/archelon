@@ -48,5 +48,9 @@ pub fn flag_icon(flag: EntryFlag) -> egui::ImageSource<'static> {
         EntryFlag::Archived    => icon!("archive"),
         EntryFlag::Open        => icon!("circle"),
         EntryFlag::Note        => icon!("file-text"),
+        // Stale/hidden を描画する専用アイコンは未導入。stale は未完了タスク
+        // 由来なので clock を、hidden は非表示の意味で circle を流用する。
+        EntryFlag::Stale       => icon!("clock"),
+        EntryFlag::Hidden      => icon!("circle"),
     }
 }

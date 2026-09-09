@@ -89,6 +89,14 @@ pub struct EntryFilterArgs {
     /// Sort direction: asc (default) or desc
     #[arg(long, value_name = "ORDER", default_value = "asc")]
     pub sort_order: String,
+
+    /// Include stale (long-neglected) tasks that are otherwise excluded by default.
+    #[arg(long)]
+    pub include_stale: bool,
+
+    /// Include explicitly hidden entries that are otherwise excluded by default.
+    #[arg(long)]
+    pub include_hidden: bool,
 }
 
 fn build_filter(args: &EntryFilterArgs) -> Result<EntryFilter> {
@@ -116,6 +124,8 @@ impl<'a> From<&'a EntryFilterArgs> for core_filter::FilterInputs<'a> {
             tags: a.tags.as_deref().unwrap_or(&[]),
             sort_by: a.sort_by.as_deref(),
             sort_order: Some(a.sort_order.as_str()),
+            include_stale: a.include_stale,
+            include_hidden: a.include_hidden,
         }
     }
 }
@@ -287,6 +297,10 @@ pub struct EntryFields {
     /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM; date-only = 23:59)
     #[arg(long, value_name = "DATETIME", value_parser = parse_datetime_end)]
     pub event_end: Option<NaiveDateTime>,
+
+    /// Hide the entry from default list/tree results (true) or reveal it (false).
+    #[arg(long)]
+    pub hidden: Option<bool>,
 }
 
 impl From<EntryFields> for CoreEntryFields {
@@ -306,6 +320,7 @@ impl From<EntryFields> for CoreEntryFields {
             task_closed_at: f.task_closed_at,
             event_start: f.event_start,
             event_end: f.event_end,
+            hidden: f.hidden,
         }
     }
 }
@@ -494,7 +509,14 @@ fn show(path: &Path) -> Result<()> {
     let fm_view = sapphire_journal_core::entry::FrontmatterView::from(entry.frontmatter.clone());
     let fm = &fm_view;
 
-    let flags = entry_flags(fm.task.as_ref(), fm.event.as_ref(), fm.created_at, fm.updated_at);
+    let flags = entry_flags(
+        fm.task.as_ref(),
+        fm.event.as_ref(),
+        fm.hidden == Some(true),
+        fm.created_at,
+        fm.updated_at,
+        chrono::Duration::days(30),
+    );
     let flags_str: Vec<&str> = flags.iter().map(|f| f.as_str()).collect();
 
     println!("# {}", entry.title());

@@ -3,6 +3,10 @@
 //! This module computes machine-readable flags for an entry based on its
 //! frontmatter (task status, event presence, timestamps). Display rendering
 //! (emoji, nerd-font glyphs, initials) is handled via [`EntryFlag`] methods.
+//!
+//! [`EntryFlag::Stale`] and [`EntryFlag::Hidden`] are orthogonal to the
+//! type/freshness slots: a task can be both `in_progress` *and* `stale`, or a
+//! note can be `hidden`. They are appended after the slot-1/slot-2 flags.
 
 use chrono::{Duration, Local, NaiveDateTime};
 
@@ -27,6 +31,12 @@ pub enum EntryFlag {
     Archived,
     Open,
     Note,
+    // Orthogonal flags (appended after the slot-1/slot-2 flags)
+    /// Incomplete task (`closed_at` absent) whose `updated_at` is older than the
+    /// configured `stale_after_days` threshold.
+    Stale,
+    /// Entry explicitly marked `hidden: true` in its frontmatter.
+    Hidden,
 }
 
 impl EntryFlag {
@@ -43,6 +53,8 @@ impl EntryFlag {
             Self::Archived    => "archived",
             Self::Open        => "open",
             Self::Note        => "note",
+            Self::Stale       => "stale",
+            Self::Hidden      => "hidden",
         }
     }
 
@@ -59,6 +71,8 @@ impl EntryFlag {
             Self::Archived    => "📦",
             Self::Open        => "⬜",
             Self::Note        => "📝",
+            Self::Stale       => "🕰️",
+            Self::Hidden      => "🙈",
         }
     }
 
@@ -75,6 +89,8 @@ impl EntryFlag {
             Self::Archived    => "󰀼",
             Self::Open        => "󰄱",
             Self::Note        => "󰈙",
+            Self::Stale       => "󰔚",
+            Self::Hidden      => "󰈈",
         }
     }
 
@@ -91,6 +107,8 @@ impl EntryFlag {
             Self::Archived    => 'A',
             Self::Open        => 'O',
             Self::Note        => 'N',
+            Self::Stale       => 'S',
+            Self::Hidden      => 'H',
         }
     }
 }
@@ -115,15 +133,30 @@ pub fn task_status_label(status: &str) -> &'static str {
     }
 }
 
+/// Returns `true` when a task is *stale*: incomplete (`closed_at` absent) and
+/// not updated for at least `stale_after`.
+///
+/// Events and notes (no task) are never stale, and a task with `closed_at` set
+/// (done/cancelled/archived) is never stale regardless of age.
+pub fn is_stale(task: Option<&TaskMetaView>, updated_at: NaiveDateTime, stale_after: Duration) -> bool {
+    let incomplete_task = task.is_some_and(|t| t.closed_at.is_none());
+    incomplete_task && (Local::now().naive_local() - updated_at) >= stale_after
+}
+
 /// Returns the computed [`EntryFlag`]s for an entry.
 ///
 /// Slot 1 (urgency/freshness): `Overdue`, `New` (created <24 h), `Updated` (<24 h), absent otherwise.
 /// Slot 2 (entry type): `Event` / `EventClosed` (past event), task status flag, or `Note`.
+///
+/// Appended afterwards, orthogonal to the slots: `Stale` (an incomplete task whose
+/// `updated_at` predates `now - stale_after`) and `Hidden` (`hidden: true`).
 pub fn entry_flags(
     task: Option<&TaskMetaView>,
     event: Option<&EventMetaView>,
+    hidden: bool,
     created_at: NaiveDateTime,
     updated_at: NaiveDateTime,
+    stale_after: Duration,
 ) -> Vec<EntryFlag> {
     let mut flags = Vec::new();
 
@@ -162,6 +195,14 @@ pub fn entry_flags(
         flags.push(flag);
     } else {
         flags.push(EntryFlag::Note);
+    }
+
+    // Orthogonal flags, appended after the type slot.
+    if is_stale(task, updated_at, stale_after) {
+        flags.push(EntryFlag::Stale);
+    }
+    if hidden {
+        flags.push(EntryFlag::Hidden);
     }
 
     flags

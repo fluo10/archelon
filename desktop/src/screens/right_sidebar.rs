@@ -151,6 +151,8 @@ fn flag_label(flag: EntryFlag) -> &'static str {
         EntryFlag::Archived => "Archived",
         EntryFlag::Open => "Open",
         EntryFlag::Note => "Note",
+        EntryFlag::Stale => "Stale",
+        EntryFlag::Hidden => "Hidden",
     }
 }
 
