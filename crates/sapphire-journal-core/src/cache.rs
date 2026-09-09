@@ -33,7 +33,7 @@ use std::{
 
 use grain_id::GrainId;
 use rusqlite::{params, Connection, OptionalExtension as _};
-use sapphire_track::TrackStore;
+use sapphire_track::{file_stamp, FileStamp, TrackStore};
 use sapphire_workspace::RetrieveDb;
 
 use crate::{
@@ -175,7 +175,7 @@ pub fn sync_cache(
     retrieve: &RetrieveDb,
     track: &dyn TrackStore,
 ) -> Result<()> {
-    let disk_files = collect_with_mtime(journal)?;
+    let disk_files = collect_stamps(journal);
     let disk_paths: HashSet<String> = disk_files
         .iter()
         .map(|(p, _)| p.to_string_lossy().into_owned())
@@ -216,9 +216,9 @@ pub fn sync_cache(
             match read_entry(path) {
                 Ok(entry) => {
                     let entry = increment_until_free(conn, entry)?;
-                    let final_mtime = file_mtime(&entry.path)?;
+                    let final_stamp = file_stamp(&entry.path);
                     let final_str = entry.path.to_string_lossy();
-                    let _ = track.upsert(final_str.as_ref(), final_mtime);
+                    let _ = track.upsert(final_str.as_ref(), final_stamp);
                     upsert_entry(conn, &entry)?;
                     let doc = entry_to_document(&entry);
                     let _ = retrieve.upsert_document(&doc);
@@ -446,7 +446,7 @@ pub fn upsert_entry_from_path(
 ) -> Result<()> {
     let entry = read_entry(path)?;
     let entry = increment_until_free(conn, entry)?;
-    let mtime = file_mtime(&entry.path)?;
+    let mtime = file_stamp(&entry.path);
     let path_str = entry.path.to_string_lossy();
     track.upsert(path_str.as_ref(), mtime)?;
     upsert_entry(conn, &entry)?;
@@ -595,22 +595,16 @@ fn increment_until_free(
     Ok(entry)
 }
 
-fn collect_with_mtime(journal: &Journal) -> Result<Vec<(PathBuf, i64)>> {
-    let paths = journal.collect_entries()?;
-    let mut result = Vec::with_capacity(paths.len());
-    for path in paths {
-        let mtime = file_mtime(&path)?;
-        result.push((path, mtime));
-    }
-    Ok(result)
-}
-
-fn file_mtime(path: &Path) -> Result<i64> {
-    Ok(std::fs::metadata(path)?
-        .modified()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0))
+fn collect_stamps(journal: &Journal) -> Vec<(PathBuf, FileStamp)> {
+    journal
+        .collect_entries()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| {
+            let stamp = file_stamp(&path);
+            (path, stamp)
+        })
+        .collect()
 }
 
 fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
