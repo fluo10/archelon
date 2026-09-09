@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::labels::{EntryFlag, entry_flags};
+use crate::labels::{entry_flags, EntryFlag, STALE_AFTER_DAYS_DEFAULT};
 
 /// Frontmatter metadata stored at the top of each .md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +40,12 @@ pub struct Frontmatter {
     /// Event metadata. Present only when this entry represents a calendar event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event: Option<EventMeta>,
+
+    /// Explicitly hidden entry. `Some(true)` excludes the entry from default
+    /// list/tree results (restorable via `--include-hidden`); absent or `false`
+    /// is treated as normally visible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
 
     /// Unknown frontmatter fields preserved for round-trip compatibility.
     #[serde(flatten)]
@@ -175,6 +181,10 @@ pub struct FrontmatterView {
     pub task: Option<TaskMetaView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event: Option<EventMetaView>,
+    /// Explicitly hidden flag. `Some(true)` marks the entry as hidden;
+    /// `None` (absent/false) is normally visible.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
 }
 
 impl From<Frontmatter> for FrontmatterView {
@@ -189,6 +199,7 @@ impl From<Frontmatter> for FrontmatterView {
             tags: fm.tags,
             task: fm.task.map(TaskMetaView::from),
             event: fm.event.map(EventMetaView::from),
+            hidden: fm.hidden,
         }
     }
 }
@@ -219,7 +230,16 @@ impl EntryHeader {
 impl From<Entry> for EntryHeader {
     fn from(entry: Entry) -> Self {
         let fm = FrontmatterView::from(entry.frontmatter);
-        let flags = entry_flags(fm.task.as_ref(), fm.event.as_ref(), fm.created_at, fm.updated_at);
+        // 表示用フラグ。stale 閾値はリスト/ツリー絞り込み時（`EntryFilter`）に
+        // 設定値を反映するため、ここでは既定の 30 日を使う。
+        let flags = entry_flags(
+            fm.task.as_ref(),
+            fm.event.as_ref(),
+            fm.hidden == Some(true),
+            fm.created_at,
+            fm.updated_at,
+            chrono::Duration::days(STALE_AFTER_DAYS_DEFAULT as i64),
+        );
         EntryHeader { path: entry.path.to_string_lossy().into_owned(), frontmatter: fm, flags }
     }
 }

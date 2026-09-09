@@ -45,7 +45,7 @@ use crate::{
 // ── schema version ────────────────────────────────────────────────────────────
 
 /// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
-pub const SCHEMA_VERSION: i32 = 4;
+pub const SCHEMA_VERSION: i32 = 5;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS entries (
     task_started_at TEXT,
     task_closed_at  TEXT,
     event_start     TEXT,
-    event_end       TEXT
+    event_end       TEXT,
+    hidden          INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_entries_parent      ON entries(parent_id);
 CREATE INDEX IF NOT EXISTS idx_entries_title       ON entries(title);
@@ -337,7 +338,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
     let mut stmt = conn.prepare(
         "SELECT id, parent_id, path, title, slug, created_at, updated_at,
                 task_status, task_due, task_started_at, task_closed_at,
-                event_start, event_end
+                event_start, event_end, hidden
          FROM entries ORDER BY id",
     )?;
 
@@ -357,6 +358,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
                 row.get::<_, Option<String>>(10)?,
                 row.get::<_, Option<String>>(11)?,
                 row.get::<_, Option<String>>(12)?,
+                row.get::<_, Option<i64>>(13)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -364,7 +366,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
     let mut result = Vec::with_capacity(rows.len());
     for (id, parent_id, path, title, slug, created_at, updated_at,
          task_status, task_due, task_started_at, task_closed_at,
-         event_start, event_end) in rows
+         event_start, event_end, hidden) in rows
     {
         let tags = tag_map.remove(&id).unwrap_or_default();
 
@@ -380,6 +382,9 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             _ => None,
         };
 
+        // キャッシュの hidden カラムは 0/1。NULL（未設定）は None = 通常表示。
+        let hidden = hidden.map(|h| h != 0);
+
         let frontmatter = FrontmatterView {
             id,
             parent_id,
@@ -390,13 +395,18 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             updated_at: parse_dt(&updated_at),
             task,
             event,
+            hidden,
         };
 
+        // stale 判定の閾値はリスト側（EntryFilter）で設定値を反映するため、
+        // ここでは既定の 30 日を使う。
         let flags = crate::labels::entry_flags(
             frontmatter.task.as_ref(),
             frontmatter.event.as_ref(),
+            frontmatter.hidden == Some(true),
             frontmatter.created_at,
             frontmatter.updated_at,
+            chrono::Duration::days(crate::labels::STALE_AFTER_DAYS_DEFAULT as i64),
         );
         result.push(EntryHeader { path, frontmatter, flags });
     }
@@ -467,10 +477,10 @@ fn fetch_full_entry(
 
     let (parent_id, path_str, title, slug, created_at, updated_at,
          task_status, task_due, task_started_at, task_closed_at,
-         event_start, event_end) = conn.query_row(
+         event_start, event_end, hidden) = conn.query_row(
         "SELECT parent_id, path, title, slug, created_at, updated_at,
                 task_status, task_due, task_started_at, task_closed_at,
-                event_start, event_end
+                event_start, event_end, hidden
          FROM entries WHERE id = ?1",
         [id],
         |row| {
@@ -487,6 +497,7 @@ fn fetch_full_entry(
                 row.get::<_, Option<String>>(9)?,
                 row.get::<_, Option<String>>(10)?,
                 row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<i64>>(12)?,
             ))
         },
     )?;
@@ -526,6 +537,7 @@ fn fetch_full_entry(
         updated_at: parse_dt(&updated_at),
         task,
         event,
+        hidden: hidden.map(|h| h != 0),
         extra: IndexMap::new(),
     };
 
@@ -616,8 +628,8 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             id, parent_id, path,
             title, slug, created_at, updated_at,
             task_status, task_due, task_started_at, task_closed_at,
-            event_start, event_end
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            event_start, event_end, hidden
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             fm.id,
             fm.parent_id,
@@ -635,6 +647,7 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
                 .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
             fm.event.as_ref().map(|e| e.start.format("%Y-%m-%dT%H:%M").to_string()),
             fm.event.as_ref().map(|e| e.end.format("%Y-%m-%dT%H:%M").to_string()),
+            fm.hidden.map(|h| i64::from(h)),
         ],
     )?;
 
@@ -696,6 +709,7 @@ mod tests {
             tags: Vec::new(),
             task: None,
             event: None,
+            hidden: None,
             extra: indexmap::IndexMap::new(),
         }
     }

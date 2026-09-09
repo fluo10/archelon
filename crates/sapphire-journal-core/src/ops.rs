@@ -9,11 +9,12 @@ use std::{cmp::Ordering, path::{Path, PathBuf}, str::FromStr};
 use indexmap::IndexMap;
 
 use grain_id::GrainId;
-use chrono::{Datelike as _, NaiveDateTime};
+use chrono::{Datelike as _, Duration, NaiveDateTime};
 use rusqlite::Connection;
 
 use crate::{
     cache,
+    labels::is_stale,
     entry::{Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
@@ -192,7 +193,15 @@ impl FieldSelector {
 /// - `period` absent, `fields` non-empty → include entries where the selected fields exist.
 ///
 /// `task_status` and `tags` are ANDed on top.
-#[derive(Debug, Default)]
+///
+/// `include_stale` / `include_hidden` are entry-level gates applied on top of
+/// every other condition: by default (both `false`) stale tasks and explicitly
+/// `hidden: true` entries are excluded from results regardless of how they
+/// matched. Setting the corresponding flag to `true` restores them.
+/// `stale_after_days` is the stale threshold (a task is stale once its
+/// `updated_at` is at least this many days old); callers load it from the
+/// journal config (`stale_after_days`, defaulting to 30).
+#[derive(Debug, Clone)]
 pub struct EntryFilter {
     /// Period to match against timestamp fields.
     pub period: Option<Period>,
@@ -206,6 +215,31 @@ pub struct EntryFilter {
     pub sort_by: SortField,
     /// Sort direction (default: ascending).
     pub sort_order: SortOrder,
+    /// Include stale tasks in results (default `false` → stale tasks excluded).
+    pub include_stale: bool,
+    /// Include explicitly hidden entries in results (default `false` → hidden excluded).
+    pub include_hidden: bool,
+    /// Stale threshold in days: an incomplete task whose `updated_at` is at least
+    /// this many days old is stale. Ignored when `include_stale` is set.
+    pub stale_after_days: u64,
+}
+
+impl Default for EntryFilter {
+    /// Note: `stale_after_days` defaults to [`STALE_AFTER_DAYS_DEFAULT`] (30),
+    /// not `0` — a zero default would make every incomplete task stale.
+    fn default() -> Self {
+        Self {
+            period: None,
+            fields: FieldSelector::default(),
+            task_status: Vec::new(),
+            tags: Vec::new(),
+            sort_by: SortField::default(),
+            sort_order: SortOrder::default(),
+            include_stale: false,
+            include_hidden: false,
+            stale_after_days: crate::labels::STALE_AFTER_DAYS_DEFAULT,
+        }
+    }
 }
 
 impl EntryFilter {
@@ -317,7 +351,17 @@ impl EntryFilter {
             true
         };
 
-        (timestamp_ok && status_ok && tags_ok, labels)
+        // Entry-level gates: hidden/stale take priority over every match reason
+        // above — an entry that matched a selector is still excluded unless the
+        // matching include-flag restores it.
+        let hidden_ok = self.include_hidden || entry.frontmatter.hidden != Some(true);
+        let stale_ok = self.include_stale || !is_stale(
+            entry.frontmatter.task.as_ref(),
+            entry.frontmatter.updated_at,
+            Duration::days(self.stale_after_days as i64),
+        );
+
+        (timestamp_ok && status_ok && tags_ok && hidden_ok && stale_ok, labels)
     }
 }
 
@@ -528,6 +572,17 @@ pub fn list_entries(
     state: &JournalState,
     filter: &EntryFilter,
 ) -> Result<Vec<(EntryHeader, Vec<MatchFlag>)>> {
+    // Load the stale threshold from the journal config (`stale_after_days`,
+    // default 30) so the entry-level stale gate in `matches` uses the configured
+    // value rather than the filter's default.
+    let mut filter = filter.clone();
+    if let Ok(cfg) = state.journal.config() {
+        filter.stale_after_days = cfg
+            .journal
+            .stale_after_days
+            .unwrap_or(crate::labels::STALE_AFTER_DAYS_DEFAULT);
+    }
+    let filter = &filter;
     if let Ok(conn) = state.open_conn() {
         let _ = cache::sync_cache(&state.journal, &conn, state.retrieve_db(), state.track());
         if let Ok(entries) = cache::list_entries_from_cache(&conn) {
@@ -623,6 +678,9 @@ pub struct EntryFields {
     pub task_closed_at: Option<NaiveDateTime>,
     pub event_start: Option<NaiveDateTime>,
     pub event_end: Option<NaiveDateTime>,
+    /// Hidden flag. `None` = leave unchanged (update) / don't write (create);
+    /// `Some(true)` / `Some(false)` = write the flag to the frontmatter.
+    pub hidden: Option<bool>,
 }
 
 // ── create ────────────────────────────────────────────────────────────────────
@@ -716,6 +774,7 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         updated_at: now,
         task,
         event,
+        hidden: fields.hidden,
         extra: IndexMap::new(),
     };
 
@@ -826,6 +885,10 @@ pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Resu
         if let Some(e) = fields.event_end {
             event.end = e;
         }
+    }
+
+    if let Some(h) = fields.hidden {
+        entry.frontmatter.hidden = Some(h);
     }
 
     fix_entry_mut(&mut entry)
@@ -1045,5 +1108,108 @@ pub(crate) fn entry_filename_from_frontmatter(id: GrainId, fm: &Frontmatter) -> 
         format!("{id}.md")
     } else {
         format!("{id}_{slug}.md")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entry::{EntryHeader, FrontmatterView, TaskMetaView};
+    use chrono::Local;
+
+    fn now() -> chrono::NaiveDateTime {
+        Local::now().naive_local()
+    }
+
+    /// Build a minimal [EntryHeader] with the given task/hidden/updated_at.
+    fn header(task: Option<TaskMetaView>, hidden: Option<bool>, updated_at: chrono::NaiveDateTime) -> EntryHeader {
+        let frontmatter = FrontmatterView {
+            id: grain_id::GrainId::now_unix(),
+            parent_id: None,
+            title: "t".into(),
+            slug: "t".into(),
+            created_at: updated_at,
+            updated_at,
+            tags: Vec::new(),
+            task,
+            event: None,
+            hidden,
+        };
+        EntryHeader { path: "/t".into(), frontmatter, flags: Vec::new() }
+    }
+
+    fn open_task() -> TaskMetaView {
+        TaskMetaView { due: None, status: "open".into(), started_at: None, closed_at: None }
+    }
+
+    fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
+        TaskMetaView { due: None, status: "done".into(), started_at: None, closed_at: Some(closed_at) }
+    }
+
+    #[test]
+    fn stale_task_is_excluded_by_default() {
+        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(!f.matches(&h).0, "a stale incomplete task must be excluded by default");
+    }
+
+    #[test]
+    fn include_stale_restores_a_stale_task() {
+        let f = EntryFilter { stale_after_days: 30, include_stale: true, ..Default::default() };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(f.matches(&h).0, "include_stale must restore a stale task");
+    }
+
+    #[test]
+    fn hidden_entry_is_excluded_by_default() {
+        let f = EntryFilter::default();
+        let h = header(None, Some(true), now());
+        assert!(!f.matches(&h).0, "a hidden entry must be excluded by default");
+    }
+
+    #[test]
+    fn include_hidden_restores_a_hidden_entry() {
+        let f = EntryFilter { include_hidden: true, ..Default::default() };
+        let h = header(None, Some(true), now());
+        assert!(f.matches(&h).0, "include_hidden must restore a hidden entry");
+    }
+
+    #[test]
+    fn custom_stale_after_days_threshold_takes_effect() {
+        let updated = now() - Duration::days(10);
+        // 10 days old: stale under a 5-day threshold, not under a 30-day one.
+        let strict = EntryFilter { stale_after_days: 5, ..Default::default() };
+        let lenient = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let h = header(Some(open_task()), None, updated);
+        assert!(!strict.matches(&h).0, "10-day-old task is stale under a 5-day threshold");
+        assert!(lenient.matches(&h).0, "10-day-old task is not stale under a 30-day threshold");
+    }
+
+    #[test]
+    fn gate_beats_other_match_reasons() {
+        // A stale task that also matches an active selector is still excluded
+        // unless include_stale is set: the entry-level gate takes priority.
+        let f = EntryFilter {
+            fields: FieldSelector::active(),
+            stale_after_days: 30,
+            ..Default::default()
+        };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(!f.matches(&h).0, "the stale gate must override other match reasons");
+    }
+
+    #[test]
+    fn closed_task_is_not_excluded_even_when_old() {
+        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let old = now() - Duration::days(400);
+        let h = header(Some(closed_task(old)), None, old);
+        assert!(f.matches(&h).0, "a closed task is never stale, so it stays included");
+    }
+
+    #[test]
+    fn hidden_false_and_absent_are_included_by_default() {
+        let f = EntryFilter::default();
+        assert!(f.matches(&header(None, Some(false), now())).0);
+        assert!(f.matches(&header(None, None, now())).0);
     }
 }

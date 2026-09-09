@@ -14,3 +14,9 @@ duplicate_title = "warn"
 # Sub-directory (relative to the journal root) where year directories are
 # created. When unset, year directories live directly under the journal root.
 # entries_dir = "entries"
+
+# Number of days after which an incomplete task (no closed_at) is treated as
+# "stale" and hidden from default list/tree results. Incomplete tasks whose
+# updated_at is older than this are excluded unless --include-stale is passed.
+# When unset, defaults to 30 days.
+# stale_after_days = 30
