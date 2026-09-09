@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::labels::{EntryFlag, entry_flags};
+use crate::labels::{entry_flags, EntryFlag, STALE_AFTER_DAYS_DEFAULT};
 
 /// Frontmatter metadata stored at the top of each .md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -238,7 +238,7 @@ impl From<Entry> for EntryHeader {
             fm.hidden == Some(true),
             fm.created_at,
             fm.updated_at,
-            chrono::Duration::days(30),
+            chrono::Duration::days(STALE_AFTER_DAYS_DEFAULT as i64),
         );
         EntryHeader { path: entry.path.to_string_lossy().into_owned(), frontmatter: fm, flags }
     }

@@ -503,7 +503,10 @@ fn print_tree(roots: &[EntryTreeNode], has_filter: bool, json: bool, mode: Displ
 // ── show ──────────────────────────────────────────────────────────────────────
 
 fn show(path: &Path) -> Result<()> {
-    use sapphire_journal_core::{labels::entry_flags, parser::read_entry};
+    use sapphire_journal_core::{
+        labels::{entry_flags, STALE_AFTER_DAYS_DEFAULT},
+        parser::read_entry,
+    };
 
     let entry = read_entry(path)?;
     let fm_view = sapphire_journal_core::entry::FrontmatterView::from(entry.frontmatter.clone());
@@ -515,7 +518,7 @@ fn show(path: &Path) -> Result<()> {
         fm.hidden == Some(true),
         fm.created_at,
         fm.updated_at,
-        chrono::Duration::days(30),
+        chrono::Duration::days(STALE_AFTER_DAYS_DEFAULT as i64),
     );
     let flags_str: Vec<&str> = flags.iter().map(|f| f.as_str()).collect();
 

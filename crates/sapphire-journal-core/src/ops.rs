@@ -201,7 +201,7 @@ impl FieldSelector {
 /// `stale_after_days` is the stale threshold (a task is stale once its
 /// `updated_at` is at least this many days old); callers load it from the
 /// journal config (`stale_after_days`, defaulting to 30).
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct EntryFilter {
     /// Period to match against timestamp fields.
     pub period: Option<Period>,
@@ -222,6 +222,24 @@ pub struct EntryFilter {
     /// Stale threshold in days: an incomplete task whose `updated_at` is at least
     /// this many days old is stale. Ignored when `include_stale` is set.
     pub stale_after_days: u64,
+}
+
+impl Default for EntryFilter {
+    /// Note: `stale_after_days` defaults to [`STALE_AFTER_DAYS_DEFAULT`] (30),
+    /// not `0` — a zero default would make every incomplete task stale.
+    fn default() -> Self {
+        Self {
+            period: None,
+            fields: FieldSelector::default(),
+            task_status: Vec::new(),
+            tags: Vec::new(),
+            sort_by: SortField::default(),
+            sort_order: SortOrder::default(),
+            include_stale: false,
+            include_hidden: false,
+            stale_after_days: crate::labels::STALE_AFTER_DAYS_DEFAULT,
+        }
+    }
 }
 
 impl EntryFilter {
@@ -559,7 +577,10 @@ pub fn list_entries(
     // value rather than the filter's default.
     let mut filter = filter.clone();
     if let Ok(cfg) = state.journal.config() {
-        filter.stale_after_days = cfg.journal.stale_after_days.unwrap_or(30);
+        filter.stale_after_days = cfg
+            .journal
+            .stale_after_days
+            .unwrap_or(crate::labels::STALE_AFTER_DAYS_DEFAULT);
     }
     let filter = &filter;
     if let Ok(conn) = state.open_conn() {

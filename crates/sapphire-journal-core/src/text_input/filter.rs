@@ -54,6 +54,6 @@ pub fn build_filter(inputs: FilterInputs<'_>) -> Result<EntryFilter> {
         include_stale: inputs.include_stale,
         include_hidden: inputs.include_hidden,
         // 実際の閾値は list_entries 側でジャーナル設定から反映される。
-        stale_after_days: 30,
+        stale_after_days: crate::labels::STALE_AFTER_DAYS_DEFAULT,
     })
 }

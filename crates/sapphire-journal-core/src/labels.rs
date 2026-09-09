@@ -15,6 +15,11 @@ use crate::entry::{EventMetaView, TaskMetaView};
 /// A computed flag describing an entry's type or freshness state.
 ///
 /// Serializes to its string representation via [`EntryFlag::as_str`].
+/// Default stale threshold in days, used when the journal config does not set
+/// `stale_after_days`. Also the display-time threshold used when constructing
+/// [`EntryHeader`] flags directly.
+pub const STALE_AFTER_DAYS_DEFAULT: u64 = 30;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryFlag {
     // Freshness / urgency (slot 1)

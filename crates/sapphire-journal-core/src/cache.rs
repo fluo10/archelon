@@ -406,7 +406,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             frontmatter.hidden == Some(true),
             frontmatter.created_at,
             frontmatter.updated_at,
-            chrono::Duration::days(30),
+            chrono::Duration::days(crate::labels::STALE_AFTER_DAYS_DEFAULT as i64),
         );
         result.push(EntryHeader { path, frontmatter, flags });
     }
