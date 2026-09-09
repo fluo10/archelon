@@ -1089,3 +1089,106 @@ pub(crate) fn entry_filename_from_frontmatter(id: GrainId, fm: &Frontmatter) -> 
         format!("{id}_{slug}.md")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entry::{EntryHeader, FrontmatterView, TaskMetaView};
+    use chrono::Local;
+
+    fn now() -> chrono::NaiveDateTime {
+        Local::now().naive_local()
+    }
+
+    /// Build a minimal [EntryHeader] with the given task/hidden/updated_at.
+    fn header(task: Option<TaskMetaView>, hidden: Option<bool>, updated_at: chrono::NaiveDateTime) -> EntryHeader {
+        let frontmatter = FrontmatterView {
+            id: grain_id::GrainId::now_unix(),
+            parent_id: None,
+            title: "t".into(),
+            slug: "t".into(),
+            created_at: updated_at,
+            updated_at,
+            tags: Vec::new(),
+            task,
+            event: None,
+            hidden,
+        };
+        EntryHeader { path: "/t".into(), frontmatter, flags: Vec::new() }
+    }
+
+    fn open_task() -> TaskMetaView {
+        TaskMetaView { due: None, status: "open".into(), started_at: None, closed_at: None }
+    }
+
+    fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
+        TaskMetaView { due: None, status: "done".into(), started_at: None, closed_at: Some(closed_at) }
+    }
+
+    #[test]
+    fn stale_task_is_excluded_by_default() {
+        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(!f.matches(&h).0, "a stale incomplete task must be excluded by default");
+    }
+
+    #[test]
+    fn include_stale_restores_a_stale_task() {
+        let f = EntryFilter { stale_after_days: 30, include_stale: true, ..Default::default() };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(f.matches(&h).0, "include_stale must restore a stale task");
+    }
+
+    #[test]
+    fn hidden_entry_is_excluded_by_default() {
+        let f = EntryFilter::default();
+        let h = header(None, Some(true), now());
+        assert!(!f.matches(&h).0, "a hidden entry must be excluded by default");
+    }
+
+    #[test]
+    fn include_hidden_restores_a_hidden_entry() {
+        let f = EntryFilter { include_hidden: true, ..Default::default() };
+        let h = header(None, Some(true), now());
+        assert!(f.matches(&h).0, "include_hidden must restore a hidden entry");
+    }
+
+    #[test]
+    fn custom_stale_after_days_threshold_takes_effect() {
+        let updated = now() - Duration::days(10);
+        // 10 days old: stale under a 5-day threshold, not under a 30-day one.
+        let strict = EntryFilter { stale_after_days: 5, ..Default::default() };
+        let lenient = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let h = header(Some(open_task()), None, updated);
+        assert!(!strict.matches(&h).0, "10-day-old task is stale under a 5-day threshold");
+        assert!(lenient.matches(&h).0, "10-day-old task is not stale under a 30-day threshold");
+    }
+
+    #[test]
+    fn gate_beats_other_match_reasons() {
+        // A stale task that also matches an active selector is still excluded
+        // unless include_stale is set: the entry-level gate takes priority.
+        let f = EntryFilter {
+            fields: FieldSelector::active(),
+            stale_after_days: 30,
+            ..Default::default()
+        };
+        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        assert!(!f.matches(&h).0, "the stale gate must override other match reasons");
+    }
+
+    #[test]
+    fn closed_task_is_not_excluded_even_when_old() {
+        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let old = now() - Duration::days(400);
+        let h = header(Some(closed_task(old)), None, old);
+        assert!(f.matches(&h).0, "a closed task is never stale, so it stays included");
+    }
+
+    #[test]
+    fn hidden_false_and_absent_are_included_by_default() {
+        let f = EntryFilter::default();
+        assert!(f.matches(&header(None, Some(false), now())).0);
+        assert!(f.matches(&header(None, None, now())).0);
+    }
+}

@@ -207,3 +207,122 @@ pub fn entry_flags(
 
     flags
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entry::{EventMetaView, TaskMetaView};
+
+    /// An incomplete task (`closed_at` absent) with an optional start time.
+    fn open_task() -> TaskMetaView {
+        TaskMetaView { due: None, status: "open".into(), started_at: None, closed_at: None }
+    }
+
+    /// A closed task (`closed_at` present).
+    fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
+        TaskMetaView {
+            due: None,
+            status: "done".into(),
+            started_at: None,
+            closed_at: Some(closed_at),
+        }
+    }
+
+    fn event(start: chrono::NaiveDateTime, end: chrono::NaiveDateTime) -> EventMetaView {
+        EventMetaView { start, end }
+    }
+
+    fn now() -> chrono::NaiveDateTime {
+        Local::now().naive_local()
+    }
+
+    #[test]
+    fn incomplete_task_exactly_at_threshold_is_stale() {
+        // `updated_at` exactly `stale_after` old: `now - updated >= stale_after` holds.
+        let stale_after = Duration::days(30);
+        let updated_at = now() - stale_after;
+        assert!(is_stale(Some(&open_task()), updated_at, stale_after));
+    }
+
+    #[test]
+    fn incomplete_task_one_day_before_threshold_is_not_stale() {
+        // One day short of the threshold -> not yet stale.
+        let stale_after = Duration::days(30);
+        let updated_at = now() - Duration::days(29);
+        assert!(!is_stale(Some(&open_task()), updated_at, stale_after));
+    }
+
+    #[test]
+    fn incomplete_task_beyond_threshold_is_stale() {
+        let stale_after = Duration::days(30);
+        let updated_at = now() - Duration::days(60);
+        assert!(is_stale(Some(&open_task()), updated_at, stale_after));
+    }
+
+    #[test]
+    fn closed_task_is_never_stale_regardless_of_age() {
+        let stale_after = Duration::days(30);
+        let updated_at = now() - Duration::days(365);
+        assert!(!is_stale(Some(&closed_task(updated_at)), updated_at, stale_after));
+    }
+
+    #[test]
+    fn event_and_note_are_never_stale() {
+        let stale_after = Duration::days(30);
+        let old = now() - Duration::days(365);
+        // No task at all (event/note) -> never stale (is_stale only inspects the task).
+        assert!(!is_stale(None, old, stale_after));
+        assert!(!is_stale(None, now() - Duration::days(1), stale_after));
+        let _ = event(old, old);
+    }
+
+    #[test]
+    fn entry_flags_appends_stale_for_old_incomplete_task() {
+        let stale_after = Duration::days(30);
+        let updated_at = now() - Duration::days(40);
+        let flags = entry_flags(
+            Some(&open_task()),
+            None,
+            false,
+            updated_at,
+            updated_at,
+            stale_after,
+        );
+        assert!(flags.contains(&EntryFlag::Stale));
+        assert!(flags.contains(&EntryFlag::Open));
+    }
+
+    #[test]
+    fn entry_flags_marks_hidden_true_as_hidden() {
+        let stale_after = Duration::days(30);
+        let now_dt = now();
+        let flags = entry_flags(None, Some(&event(now_dt, now_dt)), true, now_dt, now_dt, stale_after);
+        assert!(flags.contains(&EntryFlag::Hidden));
+    }
+
+    #[test]
+    fn entry_flags_does_not_mark_hidden_false_or_absent_as_hidden() {
+        let stale_after = Duration::days(30);
+        let now_dt = now();
+        let flags = entry_flags(None, None, false, now_dt, now_dt, stale_after);
+        assert!(!flags.contains(&EntryFlag::Hidden));
+        assert!(flags.contains(&EntryFlag::Note));
+    }
+
+    #[test]
+    fn entry_flags_stale_and_hidden_are_both_appended_for_a_stale_hidden_task() {
+        // A stale, explicitly-hidden open task carries both orthogonal flags.
+        let stale_after = Duration::days(30);
+        let updated_at = now() - Duration::days(40);
+        let flags = entry_flags(
+            Some(&open_task()),
+            None,
+            true,
+            updated_at,
+            updated_at,
+            stale_after,
+        );
+        assert!(flags.contains(&EntryFlag::Stale));
+        assert!(flags.contains(&EntryFlag::Hidden));
+    }
+}
