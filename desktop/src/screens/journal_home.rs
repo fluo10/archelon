@@ -67,7 +67,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
     let mut toggle_right_sidebar = false;
     egui::Panel::top("home_header")
         .resizable(false)
-        .show_inside(ui, |ui| {
+        .show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 draw_journal_switcher(app, ui, journal_id);
@@ -115,7 +115,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
         .resizable(true)
         .default_size(280.0)
         .size_range(220.0..=480.0)
-        .show_inside(ui, |ui| {
+        .show(ui, |ui| {
             draw_sidebar(app, ui);
         });
 
@@ -138,7 +138,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
             .resizable(true)
             .default_size(initial_width)
             .size_range(220.0..=480.0)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 if let Some(home) = app.home.as_mut() {
                     crate::screens::right_sidebar::draw(home, ui);
                 }
@@ -149,10 +149,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
     // flush under the top header.
     let overlay_top = ui.cursor().min.y;
 
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         egui::Panel::top("home_calendar")
             .resizable(false)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 draw_home_calendar(app, ui);
             });
         draw_editor_panel(app, ui);
@@ -200,7 +200,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
 fn show_journal_missing(app: &mut App, ui: &mut egui::Ui) {
     egui::Panel::top("home_header_missing")
         .resizable(false)
-        .show_inside(ui, |ui| {
+        .show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if ui.button("← Back").clicked() {
@@ -209,7 +209,7 @@ fn show_journal_missing(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(4.0);
         });
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
             ui.heading("Journal not found");
