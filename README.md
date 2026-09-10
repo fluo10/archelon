@@ -106,19 +106,6 @@ A **journal** is any directory tree that contains a `.sapphire-journal/` directo
 `sapphire-journal` locates it by walking up from the current directory, the same way `git` finds `.git/`.
 Use `sapphire-journal init` to create one.
 
-## VS Code extension
-
-The `sapphire-journal-vscode` extension integrates with the editor:
-
-- **Auto-fix on save** — runs `entry fix` automatically, keeping filenames and year directories in sync
-- **Hierarchical tree view** — entries displayed as a parent-child tree with type icons, ThemeIcon status decorations, period filter, and tree/list toggle
-- **Drag-and-drop reparenting** — drag entries in the tree to reassign parent
-- **New Entry**, **New Child Entry**, **Open Entry by ID**, **Remove Entry**, **List Entries** commands available from the Command Palette and context menu
-- **Rich tooltips** — hover over tree items to see full entry details
-
-Available on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=fluo10.sapphire-journal-vscode) and [Open VSX Registry](https://open-vsx.org/extension/fluo10/sapphire-journal-vscode).
-Platform-specific VSIX files (with the CLI binary bundled) are also on the [Releases](https://github.com/fluo10/sapphire-journal/releases) page.
-
 ## Project structure
 
 ```
@@ -126,15 +113,14 @@ sapphire-journal/
 ├── cli/                     # CLI binary (sapphire-journal)
 ├── desktop/                 # Desktop GUI (egui)
 ├── server/                  # self-hosted remote workspace + MCP server
-├── crates/
+└── crates/
 │   ├── sapphire-journal-core/   # Data model, Markdown parser/serializer, SQLite cache
 │   └── sapphire-journal-mcp/    # MCP server library (embedded by cli and server)
-└── sapphire-journal-vscode/   # VS Code extension (not a Rust crate)
 ```
 
 ## Status
 
-Early development — CLI and MCP server are functional for entry management including hierarchy and full-text search. VS Code extension available on the Marketplace and Open VSX.
+Early development — CLI and MCP server are functional for entry management including hierarchy and full-text search.
 
 ## License
 
@@ -146,6 +132,5 @@ This repository contains components under different licenses:
 | `sapphire-journal-cli` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](desktop/LICENSE.App-Store-Exception) |
-| `sapphire-journal-vscode` | MIT |
 
 See the `LICENSE` (or `LICENSE-MIT` / `LICENSE-APACHE`) file in each component's directory for the full license text.

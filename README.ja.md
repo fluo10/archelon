@@ -102,18 +102,6 @@ cargo install sapphire-journal-cli
 
 **ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。`sapphire-journal`はカレントディレクトリから上へ辿ってそれを特定します。`git`が`.git/`を見つけるのと同じ方法です。`sapphire-journal init`で作成します。
 
-## VS Code拡張
-
-`sapphire-journal-vscode`拡張はエディタと統合します：
-
-- **保存時の自動修正** — `entry fix`を自動実行し、ファイル名と年ディレクトリを同期したままに保ちます
-- **階層ツリービュー** — entryを親子ツリーとしてタイプアイコン・ThemeIconのステータス装飾・期間フィルタ・ツリー/リスト切替付きで表示
-- **ドラッグ＆ドロップでの親変更** — ツリーでentryをドラッグして親を再割り当て
-- **New Entry**、**New Child Entry**、**Open Entry by ID**、**Remove Entry**、**List Entries**コマンドをコマンドパレットとコンテキストメニューから利用可能
-- **リッチなツールチップ** — ツリー項目にホバーするとentryの詳細を全文確認できます
-
-[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=fluo10.sapphire-journal-vscode)と[Open VSX Registry](https://open-vsx.org/extension/fluo10/sapphire-journal-vscode)で公開中です。プラットフォーム別VSIXファイル（CLIバイナリ同梱）も[Releases](https://github.com/fluo10/sapphire-journal/releases)ページにあります。
-
 ## プロジェクト構成
 
 ```
@@ -121,15 +109,14 @@ sapphire-journal/
 ├── cli/                     # CLIバイナリ（sapphire-journal）
 ├── desktop/                 # デスクトップGUI（egui）
 ├── server/                  # セルフホストのリモートワークスペース＋MCPサーバー
-├── crates/
+└── crates/
 │   ├── sapphire-journal-core/   # データモデル、Markdownパーサ/シリアライザ、SQLiteキャッシュ
 │   └── sapphire-journal-mcp/    # MCPサーバーライブラリ（cliとserverが組み込み）
-└── sapphire-journal-vscode/   # VS Code拡張（Rustクレートではない）
 ```
 
 ## ステータス
 
-開発初期段階 — CLIとMCPサーバーは、階層と全文検索を含むentry管理について動作します。VS Code拡張はMarketplaceとOpen VSXで公開中です。
+開発初期段階 — CLIとMCPサーバーは、階層と全文検索を含むentry管理について動作します。
 
 ## ライセンス
 
@@ -141,6 +128,5 @@ sapphire-journal/
 | `sapphire-journal-cli` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later、App Storeマーケットプレイス例外付き |
-| `sapphire-journal-vscode` | MIT |
 
 各コンポーネントのディレクトリにある`LICENSE`（または`LICENSE-MIT` / `LICENSE-APACHE`）ファイルに完全なライセンス文書があります。
