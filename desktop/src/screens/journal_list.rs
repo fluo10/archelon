@@ -11,7 +11,7 @@ use crate::dialogs;
 use crate::registry::{JournalRegistry, RegistryEntry};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
-    egui::Panel::top("list_header").show_inside(ui, |ui| {
+    egui::Panel::top("list_header").show(ui, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             if let Some(prev_id) = app.previous_journal_id {
@@ -53,7 +53,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     });
 
     if let Some(msg) = app.error_msg.clone() {
-        egui::Panel::top("error_banner").show_inside(ui, |ui| {
+        egui::Panel::top("error_banner").show(ui, |ui| {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.colored_label(egui::Color32::LIGHT_RED, msg);
@@ -67,7 +67,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
     }
 
-    egui::CentralPanel::default().show_inside(ui, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         let journals = app.registry.journals.clone();
 
         if journals.is_empty() {
